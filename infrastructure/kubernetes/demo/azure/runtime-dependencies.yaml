@@ -1,0 +1,297 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relational-db
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/name: relational-db
+    app.kubernetes.io/part-of: firefusion-platform
+    app.kubernetes.io/component: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: relational-db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: relational-db
+        app.kubernetes.io/part-of: firefusion-platform
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+
+          env:
+            - name: POSTGRES_DB
+              value: postgres
+
+            - name: POSTGRES_USER
+              value: postgres
+
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: firefusion-runtime-secrets
+                  key: POSTGRES_PASSWORD
+
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U postgres -d postgres
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U postgres -d postgres
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "768Mi"
+
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql
+
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+
+      volumes:
+        - name: postgres-data
+          emptyDir: {}
+
+        - name: postgres-init
+          configMap:
+            name: firefusion-postgres-init
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: relational-db
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/name: relational-db
+    app.kubernetes.io/part-of: firefusion-platform
+spec:
+  selector:
+    app.kubernetes.io/name: relational-db
+
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP
+
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: broker
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/name: broker
+    app.kubernetes.io/part-of: firefusion-platform
+    app.kubernetes.io/component: messaging
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: broker
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: broker
+        app.kubernetes.io/part-of: firefusion-platform
+        app.kubernetes.io/component: messaging
+
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:4.3-rc-management
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: amqp
+              containerPort: 5672
+              protocol: TCP
+
+            - name: management
+              containerPort: 15672
+              protocol: TCP
+
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              value: firefusion
+
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: firefusion-runtime-secrets
+                  key: RABBITMQ_PASSWORD
+
+          readinessProbe:
+            exec:
+              command:
+                - rabbitmq-diagnostics
+                - check_port_connectivity
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 12
+
+          livenessProbe:
+            exec:
+              command:
+                - rabbitmq-diagnostics
+                - ping
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "768Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: broker
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/name: broker
+    app.kubernetes.io/part-of: firefusion-platform
+spec:
+  selector:
+    app.kubernetes.io/name: broker
+
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+      protocol: TCP
+
+    - name: management
+      port: 15672
+      targetPort: 15672
+      protocol: TCP
+
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/name: cache
+    app.kubernetes.io/part-of: firefusion-platform
+    app.kubernetes.io/component: cache
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cache
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cache
+        app.kubernetes.io/part-of: firefusion-platform
+        app.kubernetes.io/component: cache
+
+    spec:
+      containers:
+        - name: redis
+          image: redis:8.6.2
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cache
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/name: cache
+    app.kubernetes.io/part-of: firefusion-platform
+spec:
+  selector:
+    app.kubernetes.io/name: cache
+
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+      protocol: TCP
+
+  type: ClusterIP
