@@ -6,6 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: alloy
     app.kubernetes.io/part-of: firefusion-platform
+
 spec:
   replicas: 1
 
@@ -24,6 +25,10 @@ spec:
 
       securityContext:
         runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
 
@@ -35,6 +40,7 @@ spec:
             - run
             - /etc/alloy/config.alloy
             - --server.http.listen-addr=0.0.0.0:12345
+            - --storage.path=/var/lib/alloy/data
 
           ports:
             - name: http
@@ -49,6 +55,9 @@ spec:
               memory: 256Mi
 
           securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
@@ -61,6 +70,8 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
 
           volumeMounts:
             - name: alloy-config
@@ -68,7 +79,7 @@ spec:
               readOnly: true
 
             - name: alloy-data
-              mountPath: /var/lib/alloy/data
+              mountPath: /var/lib/alloy
 
             - name: alloy-tmp
               mountPath: /tmp
