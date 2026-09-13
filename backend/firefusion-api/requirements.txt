@@ -3,5 +3,5 @@ websockets
 aio_pika
 python-dotenv
 redis
-psycopg
+psycopg[binary]
 prometheus-fastapi-instrumentator
