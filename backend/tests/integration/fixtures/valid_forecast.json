@@ -1,0 +1,39 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              145.0,
+              -37.0
+            ],
+            [
+              145.01,
+              -37.0
+            ],
+            [
+              145.01,
+              -37.01
+            ],
+            [
+              145.0,
+              -37.01
+            ],
+            [
+              145.0,
+              -37.0
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "risk_factor": 3,
+        "fire_probability": 0.72
+      }
+    }
+  ]
+}
