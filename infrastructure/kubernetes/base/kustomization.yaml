@@ -9,4 +9,5 @@ resources:
   - firefusion-api
   - model-api
   - aggregator-api
+  - frontend
   - network-policies

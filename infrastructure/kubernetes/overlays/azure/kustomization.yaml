@@ -20,3 +20,10 @@ images:
   - name: firefusion/aggregator-api
     newName: docker.io/ashanin24x7/aggregator-api
     newTag: 152d806
+
+  - name: docker.io/ashanin24x7/firefusion-frontend
+    newName: docker.io/ashanin24x7/firefusion-frontend
+    newTag: 1a8a888
+
+patches:
+  - path: frontend-service-loadbalancer.yaml
