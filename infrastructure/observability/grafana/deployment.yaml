@@ -65,6 +65,7 @@ spec:
 
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
@@ -99,6 +100,9 @@ spec:
             - name: grafana-data
               mountPath: /var/lib/grafana
 
+            - name: grafana-tmp
+              mountPath: /tmp
+
       volumes:
         - name: datasource
           configMap:
@@ -113,4 +117,7 @@ spec:
             name: grafana-dashboard-firefusion
 
         - name: grafana-data
+          emptyDir: {}
+
+        - name: grafana-tmp
           emptyDir: {}
