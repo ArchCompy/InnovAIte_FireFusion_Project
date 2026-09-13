@@ -29,5 +29,10 @@ class Environment(BaseSettings):
         """Parse the configured origins into a list."""
         return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
+    # How long a served forecast is considered live before it is reported as
+    # stale. Set to match the AI Modelling prediction cadence once confirmed;
+    # 900s (15 minutes) is a placeholder in the meantime.
+    forecast_stale_after_seconds: int = 900
+
 
 environment = Environment()  # type: ignore

@@ -46,6 +46,10 @@ def forecast_module(monkeypatch):
     if str(APP_DIR) not in sys.path:
         sys.path.insert(0, str(APP_DIR))
     monkeypatch.setenv("CACHE_URL", "redis://localhost:6379")
+    # forecast_service now reads forecast_stale_after_seconds from config.config,
+    # whose Environment requires these even though this module doesn't use them.
+    monkeypatch.setenv("DB_URL", "postgresql://localhost/unused")
+    monkeypatch.setenv("BROKER_URL", "amqp://localhost/unused")
     try:
         from app.internal.services import forecast_service as fs
     except Exception as exc:
@@ -69,7 +73,10 @@ async def test_returns_empty_feature_collection_when_no_data(service):
 
     result = await svc.fetch_predictions()
 
-    assert result == EMPTY_FEATURE_COLLECTION
+    # Graceful degradation attaches meta (see test_graceful_degradation.py);
+    # the type/features contract this test checks is otherwise unchanged.
+    assert result["type"] == EMPTY_FEATURE_COLLECTION["type"]
+    assert result["features"] == EMPTY_FEATURE_COLLECTION["features"]
     cache.get.assert_awaited_once_with("predictions")
 
 
@@ -94,7 +101,8 @@ async def test_invalid_cached_json_falls_back_to_empty(service):
 
     result = await svc.fetch_predictions()
 
-    assert result == EMPTY_FEATURE_COLLECTION
+    assert result["type"] == EMPTY_FEATURE_COLLECTION["type"]
+    assert result["features"] == EMPTY_FEATURE_COLLECTION["features"]
 
 
 @pytest.mark.asyncio
@@ -110,7 +118,8 @@ async def test_json_null_does_not_escape_as_none(service):
     result = await svc.fetch_predictions()
 
     assert result is not None, 'cached "null" escaped as None'
-    assert result == EMPTY_FEATURE_COLLECTION
+    assert result["type"] == EMPTY_FEATURE_COLLECTION["type"]
+    assert result["features"] == EMPTY_FEATURE_COLLECTION["features"]
 
 
 @pytest.mark.asyncio
