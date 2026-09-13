@@ -142,8 +142,13 @@ NETWORK_POLICY_COUNT="$(grep -c '^kind: NetworkPolicy$' "${OUTPUT_FILE}" || true
   exit 1
 }
 
-[[ "${NETWORK_POLICY_COUNT}" -eq 3 ]] || {
-  echo "ERROR: Expected 3 NetworkPolicies, found ${NETWORK_POLICY_COUNT}."
+[[ "${NETWORK_POLICY_COUNT}" -eq 4 ]] || {
+  echo "ERROR: Expected 4 NetworkPolicies, found ${NETWORK_POLICY_COUNT}."
+  exit 1
+}
+
+grep -q 'name: allow-prometheus-metrics' "${OUTPUT_FILE}" || {
+  echo "ERROR: Prometheus metrics ingress NetworkPolicy was not found."
   exit 1
 }
 

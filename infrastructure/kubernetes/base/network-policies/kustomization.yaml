@@ -5,3 +5,4 @@ resources:
   - default-deny.yaml
   - allow-dns.yaml
   - allow-backend-api-traffic.yaml
+  - allow-prometheus.yaml
