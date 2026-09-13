@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from prometheus_fastapi_instrumentator import Instrumentator
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import forecast, hello, misinformation_controller
@@ -50,6 +51,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Expose Prometheus-compatible HTTP metrics for platform monitoring.
+# The metrics endpoint is intentionally excluded from API documentation
+# and from its own request instrumentation to avoid scrape-generated noise.
+Instrumentator(
+    excluded_handlers=["/metrics"],
+).instrument(app).expose(
+    app,
+    endpoint="/metrics",
+    include_in_schema=False,
+)
 
 # Kubernetes liveness probe endpoint.
 # A successful response confirms that the FastAPI process is operational.

@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.routers import hello
 from .internal.services.sql_event_listener import sql_event_listener
@@ -58,6 +59,16 @@ app = FastAPI(
     lifespan=init_lifespan_objects,
 )
 
+# Expose Prometheus-compatible HTTP metrics for platform monitoring.
+# The metrics endpoint is intentionally excluded from API documentation
+# and from its own request instrumentation to avoid scrape-generated noise.
+Instrumentator(
+    excluded_handlers=["/metrics"],
+).instrument(app).expose(
+    app,
+    endpoint="/metrics",
+    include_in_schema=False,
+)
 
 # Kubernetes liveness probe endpoint.
 # A successful response confirms that the FastAPI process is running.
