@@ -7,3 +7,16 @@ resources:
 labels:
   - pairs:
       cloud.firefusion.io/provider: azure
+
+images:
+  - name: firefusion/firefusion-api
+    newName: docker.io/ashanin24x7/firefusion-api
+    newTag: 152d806
+
+  - name: firefusion/model-api
+    newName: docker.io/ashanin24x7/model-api
+    newTag: 152d806
+
+  - name: firefusion/aggregator-api
+    newName: docker.io/ashanin24x7/aggregator-api
+    newTag: 152d806
