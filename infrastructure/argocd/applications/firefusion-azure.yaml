@@ -10,7 +10,7 @@ spec:
 
   source:
     repoURL: https://github.com/InnovAIte-Deakin/InnovAIte_FireFusion_Project.git
-    targetRevision: main
+    targetRevision: feature/devops_mutli_cloud_deploy_and_operation_infrastructure
     path: infrastructure/kubernetes/overlays/azure
 
   destination:
