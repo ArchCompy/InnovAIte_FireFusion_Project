@@ -34,5 +34,12 @@ class Environment(BaseSettings):
     # 900s (15 minutes) is a placeholder in the meantime.
     forecast_stale_after_seconds: int = 900
 
+    # Shared psycopg AsyncConnectionPool sizing for the misinformation
+    # database. db_pool_max_size times the number of running replicas of
+    # this service must stay under PostgreSQL's max_connections.
+    db_pool_min_size: int = 2
+    db_pool_max_size: int = 10
+    db_pool_timeout_seconds: float = 10.0
+
 
 environment = Environment()  # type: ignore
