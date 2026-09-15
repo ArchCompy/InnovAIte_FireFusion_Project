@@ -3,6 +3,24 @@
 set -euo pipefail
 
 # ============================================================
+# Demo Runtime Credentials
+# ============================================================
+
+# Demo-only credentials.
+# Environment variables can override these values.
+# The Kubernetes Secret is generated during deployment and is
+# never stored in a committed Kubernetes Secret manifest.
+
+POSTGRES_PASSWORD="${FIREFUSION_POSTGRES_PASSWORD:-FireFusionDemoDB2026}"
+RABBITMQ_PASSWORD="${FIREFUSION_RABBITMQ_PASSWORD:-FireFusionDemoMQ2026}"
+API_KEY="${FIREFUSION_API_KEY:-FireFusionDemoAPI2026}"
+
+BROKER_URL="amqp://firefusion:${RABBITMQ_PASSWORD}@broker.firefusion.svc.cluster.local:5672/"
+CACHE_URL="redis://cache.firefusion.svc.cluster.local:6379/0"
+DB_URL="postgresql://postgres:${POSTGRES_PASSWORD}@relational-db.firefusion.svc.cluster.local:5432/postgres"
+RELATIONAL_DB_URL="$DB_URL"
+
+# ============================================================
 # FireFusion Azure Demo - Automated Deployment
 # ============================================================
 
@@ -168,7 +186,7 @@ az aks command invoke \
   --command "kubectl get pods -n argocd"
 
 # ------------------------------------------------------------
-# Expose Argo CD UI for demo access
+# Expose Argo CD UI
 # ------------------------------------------------------------
 
 echo ""
@@ -219,6 +237,36 @@ az aks command invoke \
   --command "kubectl get namespace firefusion"
 
 # ------------------------------------------------------------
+# Create FireFusion runtime Secret
+# ------------------------------------------------------------
+
+echo ""
+echo "Creating FireFusion runtime Secret..."
+
+az aks command invoke \
+  --resource-group "$RESOURCE_GROUP" \
+  --name "$AKS_CLUSTER" \
+  --command "kubectl create secret generic firefusion-runtime-secrets \
+    -n firefusion \
+    --from-literal=POSTGRES_PASSWORD='$POSTGRES_PASSWORD' \
+    --from-literal=RABBITMQ_PASSWORD='$RABBITMQ_PASSWORD' \
+    --from-literal=BROKER_URL='$BROKER_URL' \
+    --from-literal=CACHE_URL='$CACHE_URL' \
+    --from-literal=DB_URL='$DB_URL' \
+    --from-literal=RELATIONAL_DB_URL='$RELATIONAL_DB_URL' \
+    --from-literal=VALID_API_KEY='$API_KEY' \
+    --from-literal=API_KEY='$API_KEY' \
+    --dry-run=client -o yaml | kubectl apply -f -"
+
+echo ""
+echo "Verifying FireFusion runtime Secret..."
+
+az aks command invoke \
+  --resource-group "$RESOURCE_GROUP" \
+  --name "$AKS_CLUSTER" \
+  --command "kubectl get secret firefusion-runtime-secrets -n firefusion"
+
+# ------------------------------------------------------------
 # Create runtime dependency bundle
 # ------------------------------------------------------------
 
@@ -260,12 +308,20 @@ az aks command invoke \
   --command "kubectl apply -f firefusion-azure-dependencies.yaml" \
   --file "$DEPENDENCIES_BUNDLE"
 
-echo ""
-echo "Waiting for runtime dependencies..."
-sleep 20
+# ------------------------------------------------------------
+# Wait for runtime dependencies
+# ------------------------------------------------------------
 
 echo ""
-echo "Runtime dependency status:"
+echo "Waiting for runtime dependencies..."
+sleep 30
+
+# ------------------------------------------------------------
+# Verify runtime dependencies
+# ------------------------------------------------------------
+
+echo ""
+echo "Runtime dependency pods:"
 
 az aks command invoke \
   --resource-group "$RESOURCE_GROUP" \
@@ -299,8 +355,7 @@ echo "Rendering Argo CD Kustomize configuration locally..."
 
 rm -f "$ARGO_BUNDLE"
 
-kubectl kustomize "$ARGO_DIR" \
-  > "$ARGO_BUNDLE"
+kubectl kustomize "$ARGO_DIR" > "$ARGO_BUNDLE"
 
 if [ ! -s "$ARGO_BUNDLE" ]; then
   echo "ERROR: Rendered Argo CD bundle is empty."
@@ -321,12 +376,17 @@ az aks command invoke \
   --file "$ARGO_BUNDLE"
 
 echo ""
+echo "Waiting for Argo CD to process the applications..."
+
+sleep 15
+
+echo ""
 echo "Argo CD projects:"
 
 az aks command invoke \
   --resource-group "$RESOURCE_GROUP" \
   --name "$AKS_CLUSTER" \
-  --command "kubectl get appprojects -n argocd"
+  --command "kubectl get appprojects -n argocd" || true
 
 echo ""
 echo "Argo CD applications:"
@@ -334,7 +394,7 @@ echo "Argo CD applications:"
 az aks command invoke \
   --resource-group "$RESOURCE_GROUP" \
   --name "$AKS_CLUSTER" \
-  --command "kubectl get applications -n argocd"
+  --command "kubectl get applications -n argocd" || true
 
 # ============================================================
 # 8. Initial FireFusion Deployment Status
@@ -352,7 +412,7 @@ echo "Argo CD application status:"
 az aks command invoke \
   --resource-group "$RESOURCE_GROUP" \
   --name "$AKS_CLUSTER" \
-  --command "kubectl get applications -n argocd"
+  --command "kubectl get applications -n argocd" || true
 
 echo ""
 echo "FireFusion deployments:"
@@ -360,7 +420,7 @@ echo "FireFusion deployments:"
 az aks command invoke \
   --resource-group "$RESOURCE_GROUP" \
   --name "$AKS_CLUSTER" \
-  --command "kubectl get deployments -n firefusion"
+  --command "kubectl get deployments -n firefusion" || true
 
 echo ""
 echo "FireFusion pods:"
@@ -368,7 +428,7 @@ echo "FireFusion pods:"
 az aks command invoke \
   --resource-group "$RESOURCE_GROUP" \
   --name "$AKS_CLUSTER" \
-  --command "kubectl get pods -n firefusion -o wide"
+  --command "kubectl get pods -n firefusion -o wide" || true
 
 echo ""
 echo "FireFusion services:"
@@ -376,7 +436,7 @@ echo "FireFusion services:"
 az aks command invoke \
   --resource-group "$RESOURCE_GROUP" \
   --name "$AKS_CLUSTER" \
-  --command "kubectl get svc -n firefusion -o wide"
+  --command "kubectl get svc -n firefusion -o wide" || true
 
 echo ""
 echo "All cluster deployments:"
@@ -384,7 +444,7 @@ echo "All cluster deployments:"
 az aks command invoke \
   --resource-group "$RESOURCE_GROUP" \
   --name "$AKS_CLUSTER" \
-  --command "kubectl get deployments -A"
+  --command "kubectl get deployments -A" || true
 
 # ============================================================
 # Demo Access Information
@@ -401,7 +461,7 @@ echo "Argo CD UI service:"
 az aks command invoke \
   --resource-group "$RESOURCE_GROUP" \
   --name "$AKS_CLUSTER" \
-  --command "kubectl get svc argocd-server -n argocd -o wide"
+  --command "kubectl get svc argocd-server -n argocd -o wide" || true
 
 echo ""
 echo "Argo CD username:"
@@ -416,12 +476,12 @@ echo "  --name $AKS_CLUSTER \\"
 echo "  --command \"kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 -d; echo\""
 
 echo ""
-echo "FireFusion public services:"
+echo "FireFusion services:"
 
 az aks command invoke \
   --resource-group "$RESOURCE_GROUP" \
   --name "$AKS_CLUSTER" \
-  --command "kubectl get svc -n firefusion -o wide"
+  --command "kubectl get svc -n firefusion -o wide" || true
 
 # ============================================================
 # Cleanup Temporary Bundles
@@ -446,12 +506,15 @@ echo "Next:"
 echo "./infrastructure/scripts/verify-azure-demo.sh"
 echo ""
 echo "Expected final state:"
-echo "  AKS                 : Ready"
-echo "  Argo CD             : Running"
-echo "  Argo CD UI          : LoadBalancer"
-echo "  FireFusion namespace: Active"
-echo "  Runtime dependencies: Running"
-echo "  FireFusion Azure app: Synced / Healthy"
+echo "  AKS                  : Ready"
+echo "  Argo CD              : Running"
+echo "  Argo CD UI           : LoadBalancer"
+echo "  FireFusion namespace : Active"
+echo "  Runtime Secret       : Created"
+echo "  PostgreSQL           : Running"
+echo "  RabbitMQ             : Running"
+echo "  Redis                : Running"
+echo "  FireFusion Azure app : Synced / Healthy"
 echo ""
 echo "NOTE:"
 echo "Argo CD is publicly exposed only for the"
