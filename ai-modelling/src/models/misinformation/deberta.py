@@ -24,6 +24,13 @@ from transformers import (
     AutoTokenizer,
 )
 
+# Canonical crisis label encodings live in a torch-free module so the data-build
+# script can share the exact same string <-> id contract.
+from src.models.misinformation.labels import (
+    HUMANITARIAN_ID2LABEL,
+    URGENCY_ID2LABEL,
+)
+
 DEFAULT_HF_MODEL_ID = "microsoft/deberta-v3-large"
 
 DEFAULT_ID2LABEL = {0: "non_misinformation", 1: "misinformation"}
@@ -198,19 +205,8 @@ class TaskSpec:
 
 # Each task is just a (name, num_labels, id2label) triple. Adding a task = add one here.
 MISINFO_TASK = TaskSpec("misinfo", 2, {0: "FALSE", 1: "TRUE"})
-URGENCY_TASK = TaskSpec("urgency", 3, {0: "NOT_USEFUL", 1: "NOT_URGENT", 2: "URGENT"})
-HUMANITARIAN_TASK = TaskSpec(
-    "humanitarian",
-    6,
-    {
-        0: "HMN_DMG",    # human damage
-        1: "MAT_DMG",    # material damage
-        2: "WARN",       # warning
-        3: "EVAC",       # evacuations
-        4: "HMN_MISS",   # missing people
-        5: "VOLUNTEER",  # volunteering
-    },
-)
+URGENCY_TASK = TaskSpec("urgency", len(URGENCY_ID2LABEL), URGENCY_ID2LABEL)
+HUMANITARIAN_TASK = TaskSpec("humanitarian", len(HUMANITARIAN_ID2LABEL), HUMANITARIAN_ID2LABEL)
 
 DEFAULT_TASKS: tuple[TaskSpec, ...] = (MISINFO_TASK, URGENCY_TASK, HUMANITARIAN_TASK)
 
@@ -263,6 +259,9 @@ class MultiTaskDeberta(nn.Module):
     ) -> dict[str, torch.Tensor]:
         hidden = self.encode(input_ids, attention_mask, token_type_ids)
         names = tasks if tasks is not None else list(self.heads.keys())
+        # Under AMP the pooled vector can come back as fp16 while the head weights
+        # stay fp32; align dtypes so ``Linear`` doesn't raise Half-vs-Float.
+        hidden = hidden.to(next(iter(self.heads.values())).weight.dtype)
         return {name: self.heads[name](hidden) for name in names}
 
 
