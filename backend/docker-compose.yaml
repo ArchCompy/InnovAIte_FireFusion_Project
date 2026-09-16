@@ -78,6 +78,7 @@ services:
       - ./utilities/misinformation/misinformation-seed.sql:/docker-entrypoint-initdb.d/04-seed.sql
       - ./utilities/v2/aggregator-init.sql:/docker-entrypoint-initdb.d/05-schema.sql
       - ./utilities/v2/seed-aggregator.sql:/docker-entrypoint-initdb.d/06-seed.sql
+      - ./utilities/firefusion/forecast-history-init.sql:/docker-entrypoint-initdb.d/07-schema.sql
     ports:
       - "5432:5432"
 

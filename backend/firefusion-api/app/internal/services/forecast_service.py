@@ -1,12 +1,17 @@
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from .caching_service import cache_client
 from .websocket_connection_manager import ws_manager
 from ...config.config import environment
 from ..models.geojson import FeatureCollection
 from ..models.forecast_status import ForecastMeta, ForecastStatus
+from ..repositories.forecast_history_repository import ForecastHistoryRepository
+
+DEFAULT_HISTORY_LIMIT = 100
+MAX_HISTORY_LIMIT = 1000
 
 
 logger = logging.getLogger(__name__)
@@ -116,6 +121,9 @@ def _classify_freshness(generated_at_raw) -> ForecastMeta:
 
 class ForecastService:
 
+    def __init__(self):
+        self.history_repository = ForecastHistoryRepository()
+
     async def store_prediction(self, payload: dict) -> dict:
         """
         Validate and store a prediction through the shared Backend path.
@@ -138,6 +146,18 @@ class ForecastService:
             json.dumps(validated_payload)
         )
         await cache_client.set(GENERATED_AT_KEY, generated_at)
+
+        # Best-effort: recording history must never block live forecast
+        # delivery. A responder needs the current risk picture regardless of
+        # whether it could also be recorded for later review.
+        try:
+            await self.history_repository.insert(
+                datetime.fromisoformat(generated_at), validated_payload
+            )
+        except Exception:
+            logger.exception(
+                "Failed to record forecast history; live delivery unaffected"
+            )
 
         # A freshly stored prediction is live by definition, age 0. Attaching
         # the same meta shape here means the WebSocket push and the REST
@@ -226,3 +246,59 @@ class ForecastService:
             )
 
         return _with_meta(feature_collection, meta)
+
+    async def get_forecast_at(self, timestamp: datetime) -> Optional[dict]:
+        """Return the forecast that was current at the given moment.
+
+        The most recent recorded forecast at or before timestamp, never a
+        later one. None if nothing was recorded that early; the router turns
+        that into a 404. Same FeatureCollection shape as fetch_predictions(),
+        including meta, so Front-end can reuse its existing rendering.
+        """
+        record = await self.history_repository.get_at(timestamp)
+
+        if record is None:
+            return None
+
+        meta = _classify_freshness(record.generated_at.isoformat())
+        return _with_meta(dict(record.payload), meta)
+
+    async def get_forecast_history(
+        self,
+        from_timestamp: datetime,
+        to_timestamp: datetime,
+        limit: int = DEFAULT_HISTORY_LIMIT,
+    ) -> list[dict]:
+        """Return forecasts in [from_timestamp, to_timestamp], newest first.
+
+        Drives a time slider over recent risk trend. limit is bounded so a
+        wide window cannot return everything at once.
+        """
+        limit = max(1, min(limit, MAX_HISTORY_LIMIT))
+
+        records = await self.history_repository.get_window(
+            from_timestamp, to_timestamp, limit
+        )
+
+        results = []
+        for record in records:
+            meta = _classify_freshness(record.generated_at.isoformat())
+            results.append(_with_meta(dict(record.payload), meta))
+        return results
+
+    async def prune_expired_history(self) -> int:
+        """Delete forecast_history rows older than the configured retention window.
+
+        No scheduler is built into this service; something outside it must
+        call this periodically. See docs/forecast-history.md.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            days=environment.forecast_history_retention_days
+        )
+        deleted = await self.history_repository.prune_older_than(cutoff)
+        logger.info(
+            "Pruned %s forecast_history row(s) older than %s",
+            deleted,
+            cutoff.isoformat(),
+        )
+        return deleted
