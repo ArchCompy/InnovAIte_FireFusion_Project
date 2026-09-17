@@ -1,139 +1,307 @@
-"""Integration tests for the Fire Risk Map endpoint.
+"""Running-stack contract tests for the Fire Risk Map endpoint.
 
-Validates GET /api/bushfire-forecast against the Back-end to Front-end contract
-(see docs/fire-risk-map-api-contract.md). These hit the running stack and skip
-cleanly when it is not up; CI fails the build if they skip.
-
-Note on empty responses: an empty FeatureCollection is a valid contract response,
-so the per-feature checks below cannot assume features exist. To avoid passing
-vacuously, the feature-shape rules are factored into validate_feature() and are
-additionally exercised against a known-good sample from model-api, which always
-has features. Where a check runs over the live endpoint it reports how many
-features it actually validated.
+These tests exercise the real firefusion-api over HTTP and use the running
+Redis service to establish explicit cache states. Each cache mutation is
+restored by the shared prediction_cache fixture.
 """
+
+import json
+
 import pytest
+
 
 pytestmark = pytest.mark.integration
 
-# Front-end convention: 1 = extreme through 5 = very low (inverse of the model's
-# internal risk_levels). Confirmed with AI Modelling.
-RISK_MIN, RISK_MAX = 1, 5
+RISK_MIN = 1
+RISK_MAX = 5
 
 ENDPOINT = "/api/bushfire-forecast"
+CACHE_KEY = "predictions"
+
+EMPTY_FEATURE_COLLECTION = {
+    "type": "FeatureCollection",
+    "features": [],
+}
+
+VALID_PAYLOAD = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [142.1560, -37.5600],
+                    [142.3200, -37.7400],
+                    [142.5100, -37.6500],
+                    [142.3800, -37.5100],
+                    [142.1560, -37.5600],
+                ]],
+            },
+            "properties": {
+                "risk_factor": 2,
+                "fire_probability": 0.78,
+            },
+        }
+    ],
+}
+
+SCHEMA_INVALID_PAYLOAD = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [142.1560, -37.5600],
+                    [142.3200, -37.7400],
+                    [142.5100, -37.6500],
+                    [142.1560, -37.5600],
+                ]],
+            },
+            "properties": {
+                "risk_factor": 0,
+            },
+        }
+    ],
+}
 
 
 def validate_feature(feature, index=0):
-    """Assert one GeoJSON feature satisfies the contract. Shared by all checks."""
-    assert feature.get("type") == "Feature", f"feature {index} has wrong type"
+    """Assert one feature satisfies the external GeoJSON contract."""
 
-    geometry = feature.get("geometry", {})
-    assert geometry.get("type") == "Polygon", f"feature {index} geometry is not a Polygon"
+    assert feature.get("type") == "Feature", (
+        f"feature {index} has wrong type"
+    )
+
+    geometry = feature.get("geometry")
+    assert isinstance(geometry, dict), (
+        f"feature {index} geometry must be an object"
+    )
+    assert geometry.get("type") == "Polygon", (
+        f"feature {index} geometry is not a Polygon"
+    )
+
     rings = geometry.get("coordinates")
-    assert isinstance(rings, list) and rings, f"feature {index} has no coordinates"
-
-    for j, ring in enumerate(rings):
-        assert len(ring) >= 4, f"feature {index} ring {j} needs at least 4 positions"
-        assert ring[0] == ring[-1], f"feature {index} ring {j} is not closed"
-        for lon, lat in ring:
-            assert -180 <= lon <= 180, f"feature {index} longitude {lon} out of range"
-            assert -90 <= lat <= 90, f"feature {index} latitude {lat} out of range"
-
-    props = feature.get("properties", {})
-    risk = props.get("risk_factor")
-    assert risk is not None, f"feature {index} is missing risk_factor"
-    assert isinstance(risk, int), f"feature {index} risk_factor is not an integer"
-    assert RISK_MIN <= risk <= RISK_MAX, (
-        f"feature {index} risk_factor {risk} outside the agreed {RISK_MIN}-{RISK_MAX} "
-        "Front-end scale (1 = extreme, 5 = very low)"
+    assert isinstance(rings, list) and rings, (
+        f"feature {index} has no polygon rings"
     )
 
-    if "fire_probability" in props:
-        prob = props["fire_probability"]
-        assert isinstance(prob, (int, float)), f"feature {index} fire_probability is not numeric"
-        assert 0.0 <= float(prob) <= 1.0, f"feature {index} fire_probability {prob} outside 0-1"
+    for ring_index, ring in enumerate(rings):
+        assert isinstance(ring, list), (
+            f"feature {index} ring {ring_index} is not a list"
+        )
+        assert len(ring) >= 4, (
+            f"feature {index} ring {ring_index} "
+            "needs at least four positions"
+        )
+        assert ring[0] == ring[-1], (
+            f"feature {index} ring {ring_index} is not closed"
+        )
 
+        for position_index, position in enumerate(ring):
+            assert isinstance(position, list), (
+                f"feature {index} ring {ring_index} "
+                f"position {position_index} is not a list"
+            )
+            assert len(position) == 2, (
+                f"feature {index} ring {ring_index} "
+                f"position {position_index} is not [longitude, latitude]"
+            )
 
-def _ok_body(ff, http):
-    """Fetch the endpoint and require a contract-compliant 200 response."""
-    r = http.get(f"{ff}{ENDPOINT}")
-    assert r.status_code == 200, (
-        f"expected 200 from {ENDPOINT}, got {r.status_code}. "
-        "The Fire Risk Map cannot render without a successful response."
+            longitude, latitude = position
+
+            assert type(longitude) in (int, float), (
+                f"feature {index} longitude is not numeric"
+            )
+            assert type(latitude) in (int, float), (
+                f"feature {index} latitude is not numeric"
+            )
+            assert -180 <= longitude <= 180, (
+                f"feature {index} longitude {longitude} out of range"
+            )
+            assert -90 <= latitude <= 90, (
+                f"feature {index} latitude {latitude} out of range"
+            )
+
+    properties = feature.get("properties")
+    assert isinstance(properties, dict), (
+        f"feature {index} properties must be an object"
     )
-    return r.json()
+
+    risk_factor = properties.get("risk_factor")
+    assert type(risk_factor) is int, (
+        f"feature {index} risk_factor is not a strict integer"
+    )
+    assert RISK_MIN <= risk_factor <= RISK_MAX, (
+        f"feature {index} risk_factor {risk_factor} "
+        f"outside {RISK_MIN}-{RISK_MAX}"
+    )
+
+    if "fire_probability" in properties:
+        probability = properties["fire_probability"]
+        assert type(probability) in (int, float), (
+            f"feature {index} fire_probability is not numeric"
+        )
+        assert 0.0 <= probability <= 1.0, (
+            f"feature {index} fire_probability "
+            f"{probability} outside 0-1"
+        )
 
 
-# --- shape of the collection itself (never vacuous) ---
+def test_missing_cache_returns_empty_feature_collection(
+    ff,
+    http,
+    prediction_cache,
+):
+    """A missing prediction is normal no-data, not a service failure."""
 
-def test_returns_a_feature_collection(ff, http):
-    """Contract: the body is always a GeoJSON FeatureCollection, never null."""
-    body = _ok_body(ff, http)
-    assert body is not None, "endpoint returned null; map clients cannot render this"
-    assert isinstance(body, dict), f"expected an object, got {type(body).__name__}"
-    assert body.get("type") == "FeatureCollection"
-    assert isinstance(body.get("features"), list), "features must be a list, not null"
+    prediction_cache.delete(CACHE_KEY)
 
+    response = http.get(f"{ff}{ENDPOINT}")
 
-def test_empty_data_is_still_valid_geojson(ff, http):
-    """Contract: with no prediction cached, features is an empty list, not null."""
-    features = _ok_body(ff, http).get("features")
-    assert features is not None
-    if not features:
-        assert features == []
+    assert response.status_code == 200
+    assert response.json() == EMPTY_FEATURE_COLLECTION
 
 
-# --- feature rules, exercised against data that definitely has features ---
+def test_valid_cached_prediction_is_served_over_http(
+    ff,
+    http,
+    prediction_cache,
+):
+    """A real Redis value is validated and returned through HTTP."""
 
-def test_feature_validation_runs_against_known_good_sample(model, http):
-    """Guard against vacuous passes.
+    prediction_cache.set(
+        CACHE_KEY,
+        json.dumps(VALID_PAYLOAD),
+    )
 
-    The live forecast may legitimately be empty, so validate_feature() is also run
-    against model-api's sample GeoJSON, which always contains features. If the
-    validation rules themselves are broken, this fails even when the forecast is
-    empty.
-    """
-    body = http.get(f"{model}/model/geojson").json()
+    response = http.get(f"{ff}{ENDPOINT}")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith(
+        "application/json"
+    )
+
+    body = response.json()
+    assert body == VALID_PAYLOAD
+
+    for index, feature in enumerate(body["features"]):
+        validate_feature(feature, index)
+
+
+@pytest.mark.parametrize(
+    "cached_value",
+    [
+        pytest.param(
+            "not-json-at-all",
+            id="malformed-json",
+        ),
+        pytest.param(
+            "[]",
+            id="non-object-json",
+        ),
+        pytest.param(
+            json.dumps(SCHEMA_INVALID_PAYLOAD),
+            id="schema-invalid-geojson",
+        ),
+    ],
+)
+def test_corrupt_cached_prediction_returns_503(
+    ff,
+    http,
+    prediction_cache,
+    cached_value,
+):
+    """Present but unusable cached data is explicit unavailability."""
+
+    prediction_cache.set(
+        CACHE_KEY,
+        cached_value,
+    )
+
+    response = http.get(f"{ff}{ENDPOINT}")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Forecast data temporarily unavailable"
+    }
+
+
+def test_feature_structure_runs_against_model_sample(
+    model,
+    http,
+):
+    """The running model-api sample supplies non-empty GeoJSON."""
+
+    response = http.get(f"{model}/model/geojson")
+
+    assert response.status_code == 200
+
+    body = response.json()
     collection = body[0] if isinstance(body, list) else body
-    features = collection.get("features", [])
-    assert features, "sample GeoJSON has no features; cannot validate the feature rules"
-    for i, feature in enumerate(features):
-        # The sample data predates the agreed risk scale, so check structure only.
+
+    assert collection.get("type") == "FeatureCollection"
+
+    features = collection.get("features")
+    assert isinstance(features, list) and features
+
+    for index, feature in enumerate(features):
         assert feature.get("type") == "Feature"
-        assert feature.get("geometry", {}).get("type") == "Polygon"
-        for ring in feature["geometry"]["coordinates"]:
-            assert ring[0] == ring[-1], f"sample feature {i} ring is not closed"
+        geometry = feature.get("geometry", {})
+        assert geometry.get("type") == "Polygon"
 
+        for ring_index, ring in enumerate(
+            geometry.get("coordinates", [])
+        ):
+            assert ring
+            assert ring[0] == ring[-1], (
+                f"sample feature {index} "
+                f"ring {ring_index} is not closed"
+            )
 
-def test_live_features_match_the_contract(ff, http, record_property):
-    """Every feature the endpoint returns must satisfy the contract.
-
-    Passes trivially when the forecast is empty, which is a valid response; the
-    count is recorded so a vacuous run is visible in the report.
-    """
-    features = _ok_body(ff, http).get("features", [])
-    record_property("features_validated", len(features))
-    for i, feature in enumerate(features):
-        validate_feature(feature, i)
-    if not features:
-        pytest.skip("forecast is currently empty (valid per contract); no features to validate")
-
-
-# --- documentation and failure contract ---
 
 def test_endpoint_is_documented_in_openapi(ff, http):
-    """Contract: the endpoint appears in the published OpenAPI docs for Front-end."""
+    """The running API publishes the formal forecast response schema."""
+
+    response = http.get(f"{ff}/openapi.json")
+
+    assert response.status_code == 200
+
+    spec = response.json()
+    operation = spec["paths"][ENDPOINT]["get"]
+    success_schema = operation["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]
+
+    assert success_schema == {
+        "$ref": "#/components/schemas/FeatureCollection"
+    }
+
+    properties_schema = spec["components"]["schemas"][
+        "Properties"
+    ]
+
+    assert "risk_factor" in properties_schema["required"]
+    assert (
+        "fire_probability"
+        not in properties_schema["required"]
+    )
+    assert (
+        "fire_probability"
+        in properties_schema["properties"]
+    )
+
+
+def test_openapi_documents_503_response(ff, http):
+    """The running API advertises its temporary failure response."""
+
     spec = http.get(f"{ff}/openapi.json").json()
-    assert ENDPOINT in spec.get("paths", {})
-    assert "get" in spec["paths"][ENDPOINT]
+    responses = spec["paths"][ENDPOINT]["get"]["responses"]
 
-
-def test_failure_response_shape_is_documented(ff, http):
-    """Contract: 503 is the documented failure mode and carries a detail message."""
-    r = http.get(f"{ff}{ENDPOINT}")
-    if r.status_code == 200:
-        spec = http.get(f"{ff}/openapi.json").json()
-        responses = spec["paths"][ENDPOINT]["get"].get("responses", {})
-        assert "503" in responses, "503 failure mode is not documented in the OpenAPI spec"
-        return
-    assert r.status_code == 503, f"unexpected status {r.status_code}"
-    assert "detail" in r.json()
+    assert "503" in responses
+    assert (
+        responses["503"]["description"]
+        == "Forecast data temporarily unavailable"
+    )
