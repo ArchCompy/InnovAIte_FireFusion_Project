@@ -65,6 +65,9 @@ html, body {
   width: 100%;
   max-width: 100vw;
   overflow-x: hidden;
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   font-family: 'Outfit', 'Inter', sans-serif;
   background: var(--bg-app);
   color: var(--text-main);

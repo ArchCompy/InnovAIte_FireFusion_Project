@@ -2838,23 +2838,46 @@ html[data-theme="dark"] .ff-theme-row {
 
   .ff-summary-card {
     background: #ffffff !important;
-    border: 1px solid #e2e8f0 !important;
+    border: 1px solid #cbd5e1 !important;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.04) !important;
-    padding: 10px 12px !important;
+    padding: 8px 10px !important;
     min-height: auto !important;
     border-radius: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  .ff-summary-icon-wrap {
+    display: grid !important;
+    place-items: center !important;
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 6px !important;
+    background: #f1f5f9 !important;
+    flex-shrink: 0 !important;
+  }
+
+  .ff-summary-icon-wrap svg {
+    width: 15px !important;
+    height: 15px !important;
   }
 
   .ff-summary-card span {
-    color: #64748b !important;
-    font-size: 7.5pt !important;
+    color: #475569 !important;
+    font-size: 7pt !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
+    white-space: normal !important;
+    line-height: 1.2 !important;
+    display: block !important;
   }
 
   .ff-summary-card strong {
-    font-size: 13pt !important;
+    font-size: 11pt !important;
     font-weight: 900 !important;
+    display: block !important;
+    margin-top: 2px !important;
   }
 
   .ff-summary-card .ff-tone-danger,

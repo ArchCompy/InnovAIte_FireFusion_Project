@@ -304,6 +304,7 @@ export default function Dashboard() {
             <div><strong>Selected Zone:</strong> {selectedZone} ({currentZoneData.risk} Threat)</div>
             <div><strong>Generated At:</strong> {new Date().toLocaleString()}</div>
             <div><strong>Classification:</strong> OFFICIAL EMERGENCY INTELLIGENCE</div>
+            <div><strong>Incident Dispatch:</strong> VicEmergency 1800 226 226</div>
           </div>
         </div>
 

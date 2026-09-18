@@ -33,8 +33,10 @@ export default function Topbar({ title = "Dashboard" }) {
 
       <h2>{title}</h2>
 
-      <select>
-        <option>Region: Australia</option>
+      <select defaultValue="Victoria (VIC) Command">
+        <option>Region: Australia (National)</option>
+        <option>Victoria (VIC) Command</option>
+        <option>New South Wales (NSW)</option>
       </select>
 
       <select>
