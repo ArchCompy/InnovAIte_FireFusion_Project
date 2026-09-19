@@ -15,6 +15,7 @@ const Sparkline = ({ color, points }) => {
   return (
     <svg viewBox="0 0 100 25" className="mt-4 h-7 w-full">
       <polyline
+        className="ff-sparkline-animated"
         points={points}
         fill="none"
         stroke={color}
