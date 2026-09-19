@@ -150,7 +150,7 @@ export default function Sidebar({ collapsed, onToggle }) {
           <div className="sidebar-bottom">
             <p className="section-title">System</p>
 
-            <button className="nav-item">
+            <button className="nav-item" title="View emergency system notifications">
               <span>
                 <Bell size={17} /> Notifications
               </span>

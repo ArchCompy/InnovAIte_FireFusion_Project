@@ -194,14 +194,19 @@ async def test_cache_failure_still_propagates(service):
 # --- existing defensive handling degrades to unavailable, not an error ---
 
 @pytest.mark.asyncio
-async def test_malformed_cached_prediction_is_unavailable_not_error(service):
+async def test_malformed_cached_prediction_is_reported_not_disguised(service, forecast_module):
+    """Damaged cache data is not "no forecast yet".
+
+    A missing key degrades to unavailable, but a present-and-unusable value
+    raises so the router returns 503 rather than showing a blank map as if
+    there were simply nothing to report. Overstating "nothing to see" is the
+    dangerous direction for an emergency tool.
+    """
     svc, cache, _ = service
     cache.get.side_effect = _cache_returning("not-json-at-all", None)
 
-    result = await svc.fetch_predictions()
-
-    assert result["meta"]["status"] == "unavailable"
-    assert result["features"] == []
+    with pytest.raises(forecast_module.ForecastCacheCorruptionError):
+        await svc.fetch_predictions()
 
 
 # --- meta must be additive: old clients reading only type/features are unaffected ---

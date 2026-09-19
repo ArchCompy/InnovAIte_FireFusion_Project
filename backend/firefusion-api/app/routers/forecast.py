@@ -2,13 +2,15 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from redis.exceptions import RedisError
+from ..internal.models.geojson import FeatureCollection
 from ..internal.services.forecast_service import (
     DEFAULT_HISTORY_LIMIT,
     MAX_HISTORY_LIMIT,
+    ForecastCacheCorruptionError,
     ForecastService,
 )
 from ..internal.services.websocket_connection_manager import ws_manager
-from ..internal.services.caching_service import cache_client
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,8 @@ async def websocket_endpoint(websocket: WebSocket):
     "/bushfire-forecast",
     tags=["bushfire"],
     summary="Fire Risk Map data",
+    response_model=FeatureCollection,
+    response_model_exclude_none=True,
     response_description="GeoJSON FeatureCollection of bushfire risk polygons (risk_factor 1=extreme to 5=very low)",
     responses={
         200: {
@@ -60,17 +64,39 @@ async def websocket_endpoint(websocket: WebSocket):
         503: {"description": "Forecast data temporarily unavailable"},
     },
 )
-async def get_bushfire_forecast(service: ForecastService = Depends(ForecastService)):
+
+
+async def get_bushfire_forecast(
+    service: ForecastService = Depends(ForecastService),
+):
     """Serve Fire Risk Map data as a GeoJSON FeatureCollection.
 
-    Always returns a valid FeatureCollection so the map can render without
-    special-casing missing data. See docs/fire-risk-map-api-contract.md.
+    Missing prediction data returns an empty FeatureCollection. Redis
+    dependency failures and corrupted cached predictions are reported as
+    temporary service unavailability.
+
+    See docs/fire-risk-map-api-contract.md.
     """
+
     try:
         return await service.fetch_predictions()
-    except Exception:
-        logger.exception("Failed to fetch bushfire forecast")
-        raise HTTPException(status_code=503, detail="Forecast data temporarily unavailable")
+    except RedisError as exc:
+        logger.exception(
+            "Redis failure while fetching bushfire forecast"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Forecast data temporarily unavailable",
+        ) from exc
+    except ForecastCacheCorruptionError as exc:
+        logger.warning(
+            "Cached bushfire forecast was invalid: %s",
+            exc,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Forecast data temporarily unavailable",
+        ) from exc
 
 
 @router.get(
