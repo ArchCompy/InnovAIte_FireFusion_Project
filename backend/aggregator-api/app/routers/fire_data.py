@@ -1,11 +1,16 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from ..dependencies import verify_api_key
 
 from ..internal.repositories.aggregator_repository import AggregatorRepository
 
 
+# These routes expose Data Engineering source data to other backend services.
+# They are internal and require the shared API key.
 router = APIRouter(
     prefix="/internal/data",
-    tags=["internal-data"]
+    tags=["internal-data"],
+    dependencies=[Depends(verify_api_key)]
 )
 
 

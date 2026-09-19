@@ -39,6 +39,7 @@ services:
         condition: service_healthy 
     environment:
       BROKER_URL: amqp://guest:guest@broker:5672
+      API_KEY: ${API_KEY:-local-development-key}
       PYTHONUNBUFFERED: 1
 
   aggregator-api: # api
@@ -55,6 +56,7 @@ services:
     environment:
       RELATIONAL_DB_URL: postgresql://postgres:postgres@relational-db:5432/postgres
       BROKER_URL: amqp://guest:guest@broker:5672
+      API_KEY: ${API_KEY:-local-development-key}
       PYTHONUNBUFFERED: 1
 
   relational-db: # relational database
@@ -74,6 +76,8 @@ services:
       - ./utilities/seed-aggregator.sql:/docker-entrypoint-initdb.d/02-seed.sql
       - ./utilities/misinformation/misinformation-init.sql:/docker-entrypoint-initdb.d/03-schema.sql
       - ./utilities/misinformation/misinformation-seed.sql:/docker-entrypoint-initdb.d/04-seed.sql
+      - ./utilities/v2/aggregator-init.sql:/docker-entrypoint-initdb.d/05-schema.sql
+      - ./utilities/v2/seed-aggregator.sql:/docker-entrypoint-initdb.d/06-seed.sql
     ports:
       - "5432:5432"
 

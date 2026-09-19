@@ -19,5 +19,15 @@ class Environment(BaseSettings):
     # the client implementation.
     ai_modelling_url: str = "http://host.docker.internal:8090"
 
+    # Comma separated list of browser origins permitted to call this service.
+    # Defaults to local development origins. Set CORS_ALLOWED_ORIGINS in any
+    # deployed environment to the dashboard's real origin.
+    cors_allowed_origins: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        """Parse the configured origins into a list."""
+        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
+
 
 environment = Environment()  # type: ignore

@@ -6,6 +6,7 @@ restored by the shared prediction_cache fixture.
 """
 
 import json
+import os
 
 import pytest
 
@@ -17,6 +18,9 @@ RISK_MAX = 5
 
 ENDPOINT = "/api/bushfire-forecast"
 CACHE_KEY = "predictions"
+
+# model-api sample data is behind the shared internal API key.
+API_KEY = os.getenv("API_KEY", "local-development-key")
 
 EMPTY_FEATURE_COLLECTION = {
     "type": "FeatureCollection",
@@ -235,7 +239,7 @@ def test_feature_structure_runs_against_model_sample(
 ):
     """The running model-api sample supplies non-empty GeoJSON."""
 
-    response = http.get(f"{model}/model/geojson")
+    response = http.get(f"{model}/model/geojson", headers={"X-API-Key": API_KEY})
 
     assert response.status_code == 200
 

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from .internal.services.forecast_service import ForecastService
 from .internal.services.messaging_service import MessagingService
 from fastapi.middleware.cors import CORSMiddleware
+from .config.config import environment
 
 @asynccontextmanager
 async def init_lifespan_objects(app: FastAPI):
@@ -19,11 +20,14 @@ async def init_lifespan_objects(app: FastAPI):
 
 app = FastAPI(lifespan=init_lifespan_objects)
 
+# Restricted to the configured dashboard origins. A wildcard origin combined
+# with allow_credentials is rejected by browsers and is unsafe once deployed,
+# so the permitted origins are configured per environment.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=environment.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET"],
     allow_headers=["*"]
 )
 
