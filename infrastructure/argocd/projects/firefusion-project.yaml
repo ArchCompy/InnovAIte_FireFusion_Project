@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: firefusion
+  namespace: argocd
+spec:
+  description: FireFusion GitOps project
+
+  sourceRepos:
+    - https://github.com/InnovAIte-Deakin/InnovAIte_FireFusion_Project.git
+
+  destinations:
+    - namespace: firefusion
+      server: https://kubernetes.default.svc
+
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  orphanedResources:
+    warn: true

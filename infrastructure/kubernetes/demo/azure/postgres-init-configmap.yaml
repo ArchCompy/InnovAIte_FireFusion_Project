@@ -1,0 +1,482 @@
+apiVersion: v1
+data:
+  01-aggregator-schema.sql: |
+    --
+    -- PostgreSQL database dump
+    --
+
+    -- Dumped from database version 18.1 (Homebrew)
+    -- Dumped by pg_dump version 18.1 (Homebrew)
+
+    SET statement_timeout = 0;
+    SET lock_timeout = 0;
+    SET idle_in_transaction_session_timeout = 0;
+    SET transaction_timeout = 0;
+    SET client_encoding = 'UTF8';
+    SET standard_conforming_strings = on;
+    SELECT pg_catalog.set_config('search_path', 'public', false);
+    SET check_function_bodies = false;
+    SET xmloption = content;
+    SET client_min_messages = warning;
+    SET row_security = off;
+
+    SET default_tablespace = '';
+    SET default_table_access_method = heap;
+
+
+    CREATE TABLE at_risk_infrastructure (
+        facility_id integer NOT NULL,
+        facility_name text,
+        category text,
+        latitude real,
+        longitude real,
+        lga text
+    );
+
+    CREATE TABLE fire_events (
+        event_id integer NOT NULL,
+        weather_id integer,
+        topo_id integer,
+        fuel_id integer,
+        facility_id integer,
+        latitude real,
+        longitude real,
+        event_date date,
+        confidence_score integer,
+        source_system text
+    );
+
+    CREATE TABLE fuel_and_vegetation (
+        fuel_id integer NOT NULL,
+        latitude real,
+        longitude real,
+        record_date date,
+        vegetation_class text,
+        dryness_index real,
+        soil_moisture real
+    );
+
+    CREATE TABLE topography (
+        topo_id integer NOT NULL,
+        latitude real,
+        longitude real,
+        elevation_meters real,
+        slope_angle real
+    );
+
+    CREATE TABLE weather_conditions (
+        weather_id integer NOT NULL,
+        latitude real,
+        longitude real,
+        record_date timestamp without time zone,
+        temperature_c real,
+        wind_speed_kmh real,
+        relative_humidity real
+    );
+
+
+    ALTER TABLE ONLY at_risk_infrastructure
+        ADD CONSTRAINT at_risk_infrastructure_pkey PRIMARY KEY (facility_id);
+
+    ALTER TABLE ONLY fire_events
+        ADD CONSTRAINT fire_events_pkey PRIMARY KEY (event_id);
+
+    ALTER TABLE ONLY fuel_and_vegetation
+        ADD CONSTRAINT fuel_and_vegetation_pkey PRIMARY KEY (fuel_id);
+
+    ALTER TABLE ONLY topography
+        ADD CONSTRAINT topography_pkey PRIMARY KEY (topo_id);
+
+
+    ALTER TABLE ONLY weather_conditions
+        ADD CONSTRAINT weather_conditions_pkey PRIMARY KEY (weather_id);
+
+
+    ALTER TABLE ONLY fire_events
+        ADD CONSTRAINT fire_events_facility_id_fkey FOREIGN KEY (facility_id) REFERENCES at_risk_infrastructure(facility_id);
+
+
+    ALTER TABLE ONLY fire_events
+        ADD CONSTRAINT fire_events_fuel_id_fkey FOREIGN KEY (fuel_id) REFERENCES fuel_and_vegetation(fuel_id);
+
+    ALTER TABLE ONLY fire_events
+        ADD CONSTRAINT fire_events_topo_id_fkey FOREIGN KEY (topo_id) REFERENCES topography(topo_id);
+
+    ALTER TABLE ONLY fire_events
+        ADD CONSTRAINT fire_events_weather_id_fkey FOREIGN KEY (weather_id) REFERENCES weather_conditions(weather_id);
+
+    CREATE VIEW fire_events_full AS
+    SELECT
+        fire_events.event_id,
+        fire_events.latitude,
+        fire_events.longitude,
+        fire_events.event_date,
+        fire_events.confidence_score,
+        weather_conditions.temperature_c,
+        weather_conditions.wind_speed_kmh,
+        weather_conditions.relative_humidity,
+        topography.elevation_meters,
+        topography.slope_angle,
+        fuel_and_vegetation.vegetation_class,
+        fuel_and_vegetation.dryness_index,
+        fuel_and_vegetation.soil_moisture,
+        at_risk_infrastructure.facility_name,
+        at_risk_infrastructure.category
+    FROM fire_events
+    LEFT JOIN weather_conditions ON fire_events.weather_id = weather_conditions.weather_id
+    LEFT JOIN topography ON fire_events.topo_id = topography.topo_id
+    LEFT JOIN fuel_and_vegetation ON fire_events.fuel_id = fuel_and_vegetation.fuel_id
+    LEFT JOIN at_risk_infrastructure ON fire_events.facility_id = at_risk_infrastructure.facility_id;
+  02-aggregator-seed.sql: |
+    -- Seed data for bushfire risk database
+
+    INSERT INTO topography (topo_id, latitude, longitude, elevation_meters, slope_angle) VALUES
+    (1, -37.81, 144.96, 31.0, 2.5),
+    (2, -37.68, 145.73, 520.0, 18.3),
+    (3, -37.75, 145.14, 120.0, 8.7),
+    (4, -38.15, 146.43, 85.0, 5.1),
+    (5, -36.76, 144.28, 225.0, 12.4),
+    (6, -37.05, 145.95, 680.0, 22.6),
+    (7, -38.34, 145.18, 45.0, 3.2),
+    (8, -36.36, 146.32, 310.0, 15.8),
+    (9, -37.56, 143.85, 440.0, 19.1),
+    (10, -38.68, 146.05, 60.0, 4.6);
+
+    INSERT INTO weather_conditions (weather_id, latitude, longitude, record_date, temperature_c, wind_speed_kmh, relative_humidity) VALUES
+    (1, -37.68, 145.73, '2025-01-15 14:00:00', 42.3, 65.0, 8.0),
+    (2, -37.75, 145.14, '2025-01-15 13:30:00', 39.8, 48.0, 12.5),
+    (3, -36.76, 144.28, '2025-02-03 15:00:00', 44.1, 72.0, 6.0),
+    (4, -37.05, 145.95, '2025-02-03 14:00:00', 38.5, 55.0, 10.2),
+    (5, -38.34, 145.18, '2025-01-28 12:00:00', 36.2, 40.0, 18.0),
+    (6, -36.36, 146.32, '2025-02-10 14:30:00', 41.0, 68.0, 7.5),
+    (7, -37.56, 143.85, '2025-12-20 13:00:00', 40.7, 58.0, 9.8),
+    (8, -38.68, 146.05, '2025-01-05 11:00:00', 33.0, 30.0, 22.0),
+    (9, -37.68, 145.73, '2025-02-14 15:00:00', 43.6, 80.0, 5.5),
+    (10, -37.81, 144.96, '2025-03-01 14:00:00', 37.0, 35.0, 15.0);
+
+    INSERT INTO fuel_and_vegetation (fuel_id, latitude, longitude, record_date, vegetation_class, dryness_index, soil_moisture) VALUES
+    (1, -37.68, 145.73, '2025-01-10', 'Wet Sclerophyll Forest', 8.5, 0.08),
+    (2, -37.75, 145.14, '2025-01-10', 'Dry Sclerophyll Forest', 7.2, 0.12),
+    (3, -36.76, 144.28, '2025-02-01', 'Grassland', 9.1, 0.05),
+    (4, -37.05, 145.95, '2025-02-01', 'Alpine Ash Forest', 6.8, 0.15),
+    (5, -38.34, 145.18, '2025-01-25', 'Heathland', 7.9, 0.10),
+    (6, -36.36, 146.32, '2025-02-08', 'Dry Sclerophyll Forest', 8.8, 0.06),
+    (7, -37.56, 143.85, '2025-12-18', 'Grassy Woodland', 8.0, 0.09),
+    (8, -38.68, 146.05, '2025-01-03', 'Wet Sclerophyll Forest', 5.5, 0.20),
+    (9, -37.68, 145.73, '2025-02-12', 'Wet Sclerophyll Forest', 9.0, 0.06),
+    (10, -37.81, 144.96, '2025-02-28', 'Urban Grassland', 6.0, 0.14);
+
+    INSERT INTO at_risk_infrastructure (facility_id, facility_name, category, latitude, longitude, lga) VALUES
+    (1, 'Healesville Primary School', 'School', -37.65, 145.52, 'Yarra Ranges'),
+    (2, 'Upper Yarra Reservoir', 'Water Supply', -37.68, 145.92, 'Yarra Ranges'),
+    (3, 'Bendigo Hospital', 'Hospital', -36.76, 144.28, 'Greater Bendigo'),
+    (4, 'Mt Buller Alpine Village', 'Tourism', -37.15, 146.44, 'Mansfield'),
+    (5, 'Mornington Community Centre', 'Community Facility', -38.22, 145.04, 'Mornington Peninsula'),
+    (6, 'Wangaratta Substation', 'Power Infrastructure', -36.36, 146.31, 'Wangaratta'),
+    (7, 'Ballarat Aged Care Home', 'Aged Care', -37.56, 143.86, 'Ballarat'),
+    (8, 'Warragul CFA Station', 'Emergency Services', -38.16, 145.93, 'Baw Baw'),
+    (9, 'Yarra Glen Kindergarten', 'Childcare', -37.66, 145.37, 'Yarra Ranges'),
+    (10, 'Lilydale Rail Hub', 'Transport', -37.76, 145.35, 'Yarra Ranges');
+
+    INSERT INTO fire_events (event_id, weather_id, topo_id, fuel_id, facility_id, latitude, longitude, event_date, confidence_score, source_system) VALUES
+    (1, 1, 2, 1, 1, -37.67, 145.70, '2025-01-15', 92, 'MODIS'),
+    (2, 2, 3, 2, NULL, -37.74, 145.12, '2025-01-15', 78, 'VIIRS'),
+    (3, 3, 5, 3, 3, -36.77, 144.30, '2025-02-03', 95, 'MODIS'),
+    (4, 4, 6, 4, 4, -37.06, 145.96, '2025-02-03', 85, 'VIIRS'),
+    (5, 5, 7, 5, 5, -38.33, 145.17, '2025-01-28', 60, 'Sentinel-2'),
+    (6, 6, 8, 6, 6, -36.35, 146.33, '2025-02-10', 91, 'MODIS'),
+    (7, 7, 9, 7, 7, -37.55, 143.84, '2025-12-20', 88, 'VIIRS'),
+    (8, 8, 10, 8, NULL, -38.67, 146.04, '2025-01-05', 55, 'Sentinel-2'),
+    (9, 9, 2, 9, 2, -37.69, 145.74, '2025-02-14', 97, 'MODIS'),
+    (10, 10, 1, 10, 10, -37.80, 144.95, '2025-03-01', 45, 'CFA Report'),
+    (11, 1, 2, 1, 9, -37.66, 145.40, '2025-01-15', 70, 'VIIRS'),
+    (12, 3, 5, 3, NULL, -36.78, 144.25, '2025-02-03', 82, 'MODIS'),
+    (13, 6, 8, 6, NULL, -36.34, 146.30, '2025-02-10', 76, 'Sentinel-2'),
+    (14, 9, 2, 9, 1, -37.66, 145.55, '2025-02-14', 93, 'MODIS'),
+    (15, 7, 9, 7, NULL, -37.58, 143.88, '2025-12-20', 65, 'CFA Report');
+  03-misinformation-schema.sql: |
+    CREATE TYPE severity_values AS ENUM ('MEDIUM', 'HIGH', 'CRITICAL');
+    CREATE TYPE social_platform_values AS ENUM ('TWITTER', 'FACEBOOK', 'TIKTOK', 'REDDIT');
+    CREATE TYPE spread_velocity_indicator_values AS ENUM ('STEADY', 'GROWING', 'SPREADING_FAST');
+    CREATE TYPE review_status_values AS ENUM ('NEEDS_REVIEW', 'DISMISSED', 'CONFIRMED_MISINFORMATION', 'CORRECTION_PUBLISHED');
+
+    CREATE TABLE incidents (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        is_active BOOLEAN
+    );
+
+    CREATE TABLE narrative_clusters (
+        id TEXT PRIMARY KEY,
+        summary TEXT,
+        incident_id TEXT REFERENCES incidents(id),
+        spread_status spread_velocity_indicator_values,
+        review_status review_status_values
+    );
+
+    CREATE TABLE posts (
+        id TEXT PRIMARY KEY,
+        author_name TEXT,
+        platform social_platform_values,
+        content TEXT,
+        ts TIMESTAMPTZ,
+        share_count BIGINT,
+        post_url TEXT,
+        misinformation_risk_score
+            NUMERIC(2, 1) NOT NULL
+            CHECK (misinformation_risk_score >= 0.0 AND misinformation_risk_score <= 1.0),
+        severity severity_values GENERATED ALWAYS AS (
+            CASE
+                WHEN misinformation_risk_score >= 0.8 THEN 'CRITICAL'::severity_values
+                WHEN misinformation_risk_score >= 0.5 THEN 'HIGH'::severity_values
+                ELSE 'MEDIUM'::severity_values
+            END
+        ) STORED
+    );
+
+    CREATE TABLE narrative_cluster_key_claims (
+        id BIGSERIAL PRIMARY KEY,
+        narrative_cluster_id TEXT REFERENCES narrative_clusters(id),
+        content TEXT
+    );
+
+    CREATE TABLE narrative_cluster_matched_facts (
+        id BIGSERIAL PRIMARY KEY,
+        narrative_cluster_id TEXT REFERENCES narrative_clusters(id),
+        source TEXT,
+        timestamp TIMESTAMPTZ,
+        content TEXT
+    );
+
+    CREATE TABLE narrative_cluster_posts (
+        cluster_id TEXT REFERENCES narrative_clusters(id) ON DELETE CASCADE,
+        post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
+        PRIMARY KEY (cluster_id, post_id)
+    );
+
+    CREATE INDEX ON narrative_clusters (incident_id);
+    CREATE INDEX ON narrative_cluster_posts (post_id);
+
+    CREATE VIEW narrative_cluster_objects AS
+    SELECT
+        nc.id AS narrative_id,
+        nc.summary AS narrative_summary,
+        nc.incident_id AS incident_id,
+        i.name AS incident_name,
+        max(p.severity) AS severity,
+        array_agg(p.id ORDER BY p.ts) FILTER (WHERE p.id IS NOT NULL) AS post_ids,
+        count(p.id) AS post_count,
+        COALESCE(sum(p.share_count), 0) AS combined_shares,
+        nc.spread_status AS spread_status,
+        min(p.ts) AS timestamp_earliest,
+        max(p.ts) AS timestamp_latest,
+        array_agg(DISTINCT p.platform) FILTER (WHERE p.platform IS NOT NULL) AS platforms,
+        nc.review_status AS review_status,
+        kc.key_claims AS key_claims,
+        mf.matched_facts AS matched_facts
+    FROM narrative_clusters nc
+    LEFT JOIN incidents i ON nc.incident_id = i.id
+    LEFT JOIN narrative_cluster_posts ncp ON ncp.cluster_id = nc.id
+    LEFT JOIN posts p ON p.id = ncp.post_id
+    LEFT JOIN (
+        SELECT narrative_cluster_id, array_agg(content ORDER BY id) AS key_claims
+        FROM narrative_cluster_key_claims
+        GROUP BY narrative_cluster_id
+    ) kc ON kc.narrative_cluster_id = nc.id
+    LEFT JOIN (
+        SELECT narrative_cluster_id,
+               jsonb_agg(
+                   jsonb_build_object(
+                       'source', source,
+                       'timestamp', timestamp,
+                       'content', content
+                   ) ORDER BY timestamp DESC
+               ) AS matched_facts
+        FROM narrative_cluster_matched_facts
+        GROUP BY narrative_cluster_id
+    ) mf ON mf.narrative_cluster_id = nc.id
+    GROUP BY nc.id, nc.summary, nc.incident_id, i.name, kc.key_claims, mf.matched_facts;
+
+    CREATE VIEW active_incident_objects AS
+    SELECT
+        i.id AS incident_id,
+        i.name AS incident_name,
+        count(DISTINCT p.id) AS total_flags,
+        jsonb_build_object(
+            'critical', count(*) FILTER (WHERE p.severity = 'CRITICAL'),
+            'high', count(*) FILTER (WHERE p.severity = 'HIGH'),
+            'medium', count(*) FILTER (WHERE p.severity = 'MEDIUM')
+        ) AS severity_breakdown,
+        (array_agg(nc.summary ORDER BY CASE p.severity
+            WHEN 'CRITICAL' THEN 3
+            WHEN 'HIGH'     THEN 2
+            WHEN 'MEDIUM'   THEN 1
+            ELSE 0
+        END DESC NULLS LAST))[1] AS top_threat
+    FROM incidents i
+    LEFT JOIN narrative_clusters nc ON nc.incident_id = i.id
+    LEFT JOIN narrative_cluster_posts ncp ON ncp.cluster_id = nc.id
+    LEFT JOIN posts p ON p.id = ncp.post_id
+    WHERE i.is_active = true
+    GROUP BY i.id, i.name;
+  04-misinformation-seed.sql: |2
+
+    BEGIN;
+
+    TRUNCATE TABLE
+        narrative_cluster_posts,
+        narrative_cluster_matched_facts,
+        narrative_cluster_key_claims,
+        narrative_clusters,
+        posts,
+        incidents
+    RESTART IDENTITY CASCADE;
+
+    INSERT INTO incidents (id, name, is_active) VALUES
+        ('inc_east_gippsland', 'East Gippsland fire complex',     TRUE),
+        ('inc_grampians',      'Grampians National Park fire',    TRUE),
+        ('inc_otway_ranges',   'Otway Ranges grass fire',         TRUE),
+        ('inc_macedon_ranges', 'Macedon Ranges spotfire',         FALSE),
+        ('inc_mornington',     'Mornington Peninsula scrub fire', TRUE),
+        ('inc_dandenongs',     'Dandenong Ranges ember alert',    FALSE);
+
+    INSERT INTO posts (id, author_name, platform, content, ts, share_count, post_url, misinformation_risk_score) VALUES
+        ('post_001', '@gippy_local',     'TWITTER',  'BREAKING: CFA has just ordered FULL evacuation of Bairnsdale CBD. Get out NOW. They aren''t telling you how close it really is.',                  '2026-01-22T06:14:00+11:00', 3450, 'https://twitter.com/gippy_local/status/1',                0.9),
+        ('post_002', 'EastGippyAlerts',  'FACEBOOK', 'Friends in Bairnsdale — evacuation order is OFFICIAL. Authorities have been hiding the real distance of the fire. Share to save lives.',          '2026-01-22T06:52:00+11:00', 2820, 'https://facebook.com/EastGippyAlerts/posts/2',            0.9),
+        ('post_003', 'u/bushfire_truth', 'REDDIT',   'My cousin in CFA says they pushed an evac order for Bairnsdale CBD this morning but the website hasn''t caught up. Spread the word.',             '2026-01-22T07:48:00+11:00', 1220, 'https://reddit.com/r/melbourne/comments/3',               0.8),
+
+        ('post_004', '@firewatcher_au',  'TWITTER',  'Wake up. The Grampians fire didn''t start itself. Eco-greens blocked the burn-offs and now arsonists are doing the rest. CFA won''t say it.',     '2026-01-21T19:30:00+11:00', 3200, 'https://twitter.com/firewatcher_au/status/4',             0.7),
+        ('post_005', 'TruthAboutFires',  'FACEBOOK', 'They''re hiding it again. Grampians fire = arson + decades of blocked fuel reduction. Don''t believe the official line.',                          '2026-01-21T20:15:00+11:00', 1540, 'https://facebook.com/TruthAboutFires/posts/5',            0.6),
+
+        ('post_006', '@drive_vic',       'TWITTER',  'Princes Hwy between Bairnsdale and Lakes Entrance is COMPLETELY CLOSED. There is NO eastbound evacuation route. VicRoads is lying.',              '2026-01-22T11:05:00+11:00', 9100, 'https://twitter.com/drive_vic/status/6',                  0.7),
+        ('post_007', '@gippsland_now',   'TIKTOK',   'POV: trying to leave Bairnsdale and the highway is shut both ways. Why is no one talking about this?? #vicfires',                                  '2026-01-22T12:40:00+11:00', 4370, 'https://tiktok.com/@gippsland_now/video/7',               0.7),
+
+        ('post_008', '@coast_weather',   'TWITTER',  'Hearing whispers of a 3pm wind change pushing the Otways fire straight at Apollo Bay. BoM not saying it publicly but my source is solid.',        '2026-01-23T08:22:00+11:00',  310, 'https://twitter.com/coast_weather/status/8',              0.4),
+        ('post_009', 'u/otway_resident', 'REDDIT',   'Anyone else heard the 3pm wind change rumour? My neighbour reckons BoM told her it''s coming but they''re holding the announcement.',             '2026-01-23T09:10:00+11:00',  155, 'https://reddit.com/r/geelong/comments/9',                 0.4),
+
+        ('post_010', '@grant_help_vic',   'TWITTER',  'URGENT: Vic Govt $5000 emergency rebuild grant — fire-affected residents apply within 48hrs at vic-rebuild-claim[.]com',                          '2026-01-20T14:55:00+11:00', 5500, 'https://twitter.com/grant_help_vic/status/10',           0.7),
+        ('post_011', 'BushfireSupportAU', 'FACEBOOK', 'The Victorian Government has launched a $5000 rebuild grant for fire victims. Apply here before the deadline closes!',                            '2026-01-20T16:20:00+11:00', 4200, 'https://facebook.com/BushfireSupportAU/posts/11',        0.7),
+        ('post_012', '@reliefnow_au',     'TIKTOK',   'If your home was hit by the East Gippsland fires, you can claim $5000 from the state. Link in bio. Don''t miss it!',                              '2026-01-20T17:45:00+11:00', 2240, 'https://tiktok.com/@reliefnow_au/video/12',              0.6),
+
+        ('post_013', '@halls_gap_watch', 'TWITTER',  'Big wind change overnight will turn the Grampians fire toward Halls Gap. CFA is being too quiet about this one.',                                  '2026-01-21T21:30:00+11:00',  210, 'https://twitter.com/halls_gap_watch/status/13',           0.4),
+        ('post_014', 'u/grampians_hiker','REDDIT',   'Anyone in Halls Gap should be packed and ready — overnight wind shift incoming according to a CFA volunteer I know.',                              '2026-01-21T22:05:00+11:00',  105, 'https://reddit.com/r/grampians/comments/14',              0.3),
+
+        ('post_015', '@aviation_au',     'TWITTER',  'Reports a Coulson 737 water bomber went down near the Grampians 30 mins ago. No official word yet. Praying for the crew.',                         '2026-01-21T15:10:00+11:00', 8400, 'https://twitter.com/aviation_au/status/15',               0.9),
+        ('post_016', 'PlaneSpottersVic', 'FACEBOOK', 'Heard from multiple sources a large air tanker crashed in the Grampians today. Authorities silent. Will update.',                                  '2026-01-21T15:42:00+11:00', 5300, 'https://facebook.com/PlaneSpottersVic/posts/16',          0.8),
+
+        ('post_017', '@locals_first',    'TWITTER',  'Mate in Mallacoota says looters hit three evacuated houses last night. Police nowhere to be seen.',                                                 '2026-01-22T20:14:00+11:00',  410, 'https://twitter.com/locals_first/status/17',              0.4),
+        ('post_018', 'u/east_gippsland', 'REDDIT',   'Hearing more reports of break-ins around Mallacoota while people are at the relief centre. Anyone else seeing this?',                              '2026-01-22T21:08:00+11:00',  230, 'https://reddit.com/r/melbourne/comments/18',              0.4),
+
+        ('post_019', '@helpgippsfire',     'TWITTER',  'Donate to East Gippsland fire relief: bsb 063-000 acc 12345678. Every dollar goes direct to families. RT please.',                               '2026-01-21T11:30:00+11:00', 6700, 'https://twitter.com/helpgippsfire/status/19',             0.7),
+        ('post_020', 'GippsRecoveryFund',  'FACEBOOK', 'Official East Gippsland Recovery Fund is now live. Bank details in comments. Please share widely.',                                              '2026-01-21T12:15:00+11:00', 4100, 'https://facebook.com/GippsRecoveryFund/posts/20',         0.7),
+
+        ('post_021', '@cfa_vic',           'TWITTER',  'Watch and Act issued for areas south of Bairnsdale. Monitor VicEmergency for updates.',                                                          '2026-01-22T07:32:00+11:00',  980, 'https://twitter.com/cfa_vic/status/21',                   0.0),
+        ('post_022', '@vicemergency',      'TWITTER',  'Princes Highway between Bairnsdale and Lakes Entrance: OPEN with reduced limits. CFA traffic management active.',                                '2026-01-22T12:30:00+11:00', 1240, 'https://twitter.com/vicemergency/status/22',              0.0),
+        ('post_023', 'u/halls_gap_local',  'REDDIT',   'Just got back from the CFA briefing in Halls Gap. Containment lines holding, no overnight wind change forecast. Don''t panic.',                  '2026-01-21T22:30:00+11:00',  320, 'https://reddit.com/r/grampians/comments/23',              0.1),
+        ('post_024', '@bom_vic',           'TWITTER',  'South-westerly change for Otway Ranges between 4pm and 6pm today. Conditions easing afterwards.',                                                '2026-01-23T09:00:00+11:00',  540, 'https://twitter.com/bom_vic/status/24',                   0.0);
+
+    INSERT INTO narrative_clusters (id, summary, incident_id, spread_status, review_status) VALUES
+        ('nar_001', 'False evacuation order for Bairnsdale CBD',                              'inc_east_gippsland', 'SPREADING_FAST', 'NEEDS_REVIEW'),
+        ('nar_002', 'Arson conspiracy claims about Grampians fire ignition',                  'inc_grampians',      'GROWING',        'CONFIRMED_MISINFORMATION'),
+        ('nar_003', 'False claim that Lakes Entrance Road is closed',                         'inc_east_gippsland', 'SPREADING_FAST', 'NEEDS_REVIEW'),
+        ('nar_004', 'Unverified weather speculation in the Otway Ranges',                     'inc_otway_ranges',   'STEADY',         'NEEDS_REVIEW'),
+        ('nar_005', 'Phishing scam impersonating a $5000 emergency rebuild grant',            'inc_east_gippsland', 'GROWING',        'CORRECTION_PUBLISHED'),
+        ('nar_006', 'Low-credibility speculation about understated Grampians wind change',    'inc_grampians',      'STEADY',         'DISMISSED'),
+        ('nar_007', 'False water-bomber crash report in the Grampians',                       'inc_grampians',      'SPREADING_FAST', 'CONFIRMED_MISINFORMATION'),
+        ('nar_008', 'Looting rumours in evacuated East Gippsland towns',                      'inc_east_gippsland', 'STEADY',         'NEEDS_REVIEW'),
+        ('nar_009', 'Fake recovery donation account using fraudulent bank details',           'inc_east_gippsland', 'GROWING',        'CORRECTION_PUBLISHED');
+
+    INSERT INTO narrative_cluster_key_claims (narrative_cluster_id, content) VALUES
+        ('nar_001', 'CFA has ordered a full evacuation of Bairnsdale CBD'),
+        ('nar_001', 'The fire is closer to Bairnsdale than authorities are admitting'),
+        ('nar_001', 'Residents are being kept in the dark about the true danger level'),
+
+        ('nar_002', 'The Grampians fire was deliberately lit by arsonists'),
+        ('nar_002', 'Fuel reduction burns were blocked by environmental groups'),
+        ('nar_002', 'Authorities are covering up the true cause of the fire'),
+
+        ('nar_003', 'Lakes Entrance Road (Princes Highway) is completely closed'),
+        ('nar_003', 'There is no way to evacuate east from Bairnsdale'),
+        ('nar_003', 'VicRoads is not updating road status accurately'),
+
+        ('nar_004', 'A major wind change at 3pm will push the fire toward Apollo Bay'),
+        ('nar_004', 'Bureau of Meteorology sources have confirmed the wind change privately'),
+
+        ('nar_005', 'The Victorian Government is offering $5000 emergency rebuild grants'),
+        ('nar_005', 'Residents must apply through a specific link to receive the grant'),
+        ('nar_005', 'The application deadline is within 48 hours'),
+
+        ('nar_006', 'A wind change will push the Grampians fire toward Halls Gap overnight'),
+        ('nar_006', 'CFA is downplaying the severity of the wind change forecast'),
+
+        -- Extras
+        ('nar_007', 'A Coulson 737 water bomber crashed in the Grampians'),
+        ('nar_007', 'Authorities are concealing the incident from the public'),
+
+        ('nar_008', 'Looters have broken into evacuated homes in Mallacoota'),
+        ('nar_008', 'Police are absent from evacuated towns'),
+
+        ('nar_009', 'An official East Gippsland Recovery Fund is collecting donations via the BSB and account number provided'),
+        ('nar_009', 'Donations should be transferred directly to the listed bank account');
+
+    -- ---------------------------------------------------------------------------
+    -- Matched facts
+    -- ---------------------------------------------------------------------------
+    INSERT INTO narrative_cluster_matched_facts (narrative_cluster_id, source, "timestamp", content) VALUES
+        ('nar_001', 'CFA Official Bulletin', '2026-01-22T07:32:00+11:00',
+         'No evacuation order has been issued for Bairnsdale CBD. Current status: Watch and Act for surrounding areas. Residents should monitor VicEmergency for updates.'),
+        ('nar_001', 'VicEmergency',          '2026-01-22T07:15:00+11:00',
+         'East Gippsland fire complex: fire is currently 4.2km from Bairnsdale township. All warnings are being issued in real time via VicEmergency app and website.'),
+
+        ('nar_002', 'CFA Official Bulletin', '2026-01-21T20:00:00+11:00',
+         'The cause of the Grampians National Park fire is under investigation. No evidence of deliberate ignition has been confirmed at this time.'),
+        ('nar_002', 'DELWP',                 '2026-01-21T18:45:00+11:00',
+         'Planned burn program for the Grampians region was conducted on schedule in autumn 2025. Details of completed burns are available on the DELWP website.'),
+
+        ('nar_003', 'VicRoads',              '2026-01-22T12:30:00+11:00',
+         'Princes Highway between Bairnsdale and Lakes Entrance is OPEN with reduced speed limits and CFA traffic management in place. Check traffic.vicroads.vic.gov.au for live updates.'),
+        ('nar_003', 'VicEmergency',          '2026-01-22T12:15:00+11:00',
+         'Eastbound evacuation routes from Bairnsdale remain accessible. Residents should follow directions from emergency services personnel on the ground.'),
+
+        ('nar_004', 'Bureau of Meteorology', '2026-01-23T09:00:00+11:00',
+         'A south-westerly wind change is forecast for the Otway Ranges region between 4pm and 6pm. Fire weather conditions will ease following the change. Official forecasts are available at bom.gov.au.'),
+
+        ('nar_005', 'Victorian Government — Emergency Recovery', '2026-01-20T16:00:00+11:00',
+         'The Victorian Government has not announced a $5000 emergency rebuild grant. All legitimate disaster recovery payments are administered through Services Australia and can be accessed at services.gov.au.'),
+        ('nar_005', 'Scamwatch (ACCC)',      '2026-01-20T15:30:00+11:00',
+         'Scamwatch has received reports of phishing links impersonating government disaster relief. Do not click links in unsolicited social media posts. Report suspicious activity at scamwatch.gov.au.'),
+
+        ('nar_006', 'Bureau of Meteorology', '2026-01-21T21:00:00+11:00',
+         'No significant wind change is forecast for the Grampians region overnight. Conditions expected to remain stable until mid-morning. Monitor bom.gov.au for official forecasts.'),
+        ('nar_006', 'CFA Official Bulletin', '2026-01-21T21:30:00+11:00',
+         'Grampians National Park fire: current containment lines are holding. No change to warning level for Halls Gap area at this time.'),
+
+        ('nar_007', 'Coulson Aviation',      '2026-01-21T16:00:00+11:00',
+         'All Coulson aircraft assigned to Victoria are accounted for. No incidents to report. Operations continuing as scheduled.'),
+        ('nar_007', 'CFA Official Bulletin', '2026-01-21T16:10:00+11:00',
+         'Reports circulating on social media of an air tanker crash in the Grampians are false. All crews are safe.'),
+
+        ('nar_008', 'Victoria Police',       '2026-01-22T22:30:00+11:00',
+         'Police patrols have been increased in evacuated areas of East Gippsland. Two unconfirmed reports of property interference are under investigation. No widespread looting has been reported.'),
+
+        ('nar_009', 'Bushfire Recovery Victoria', '2026-01-21T13:00:00+11:00',
+         'The official recovery donation channel is the Victorian Bushfire Appeal hosted by the Bendigo Bank Community Enterprise Foundation. Verify any account before donating.'),
+        ('nar_009', 'Scamwatch (ACCC)',      '2026-01-21T13:30:00+11:00',
+         'Reports of fraudulent bushfire donation accounts. Verify legitimacy before transferring funds; report to scamwatch.gov.au.');
+
+    INSERT INTO narrative_cluster_posts (cluster_id, post_id) VALUES
+        ('nar_001', 'post_001'), ('nar_001', 'post_002'), ('nar_001', 'post_003'),
+        ('nar_002', 'post_004'), ('nar_002', 'post_005'),
+        ('nar_003', 'post_006'), ('nar_003', 'post_007'),
+        ('nar_004', 'post_008'), ('nar_004', 'post_009'),
+        ('nar_005', 'post_010'), ('nar_005', 'post_011'), ('nar_005', 'post_012'),
+        ('nar_006', 'post_013'), ('nar_006', 'post_014'),
+        ('nar_007', 'post_015'), ('nar_007', 'post_016'),
+        ('nar_008', 'post_017'), ('nar_008', 'post_018'),
+        ('nar_009', 'post_019'), ('nar_009', 'post_020');
+
+    COMMIT;
+kind: ConfigMap
+metadata:
+  name: firefusion-postgres-init
+  namespace: firefusion

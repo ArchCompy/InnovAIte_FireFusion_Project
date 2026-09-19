@@ -5,6 +5,5 @@ resources:
   - prometheus
   - grafana
   - loki
-  - tempo
   - alloy
   - alerts

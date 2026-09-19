@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: firefusion-api
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/name: firefusion-api
+    app.kubernetes.io/part-of: firefusion-platform
+spec:
+  type: ClusterIP
+
+  selector:
+    app.kubernetes.io/name: firefusion-api
+
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: http

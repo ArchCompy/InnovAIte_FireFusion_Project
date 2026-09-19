@@ -25,19 +25,3 @@ data:
         access: proxy
         url: http://loki.monitoring.svc.cluster.local:3100
         editable: false
-        jsonData:
-          # Links a log line's trace_id (see shared/tracing.py's logging
-          # instrumentation) to its trace in Tempo, so a Loki log line in
-          # Grafana can jump straight to the request it belongs to.
-          derivedFields:
-            - datasourceUid: tempo
-              matcherRegex: "trace_id=(\\w+)"
-              name: TraceID
-              url: "${__value.raw}"
-
-      - name: Tempo
-        uid: tempo
-        type: tempo
-        access: proxy
-        url: http://tempo.monitoring.svc.cluster.local:3200
-        editable: false

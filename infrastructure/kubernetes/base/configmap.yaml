@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: firefusion-runtime-config
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/name: firefusion-runtime-config
+    app.kubernetes.io/part-of: firefusion-platform
+
+data:
+  PYTHONUNBUFFERED: "1"

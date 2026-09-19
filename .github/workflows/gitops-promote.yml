@@ -1,0 +1,83 @@
+name: GitOps Image Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Target cloud provider
+        required: true
+        type: choice
+        options:
+          - gcp
+          - azure
+          - aws
+
+      image_tag:
+        description: Immutable Docker image tag, normally a Git commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    name: Promote FireFusion Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "firefusion-gitops-bot"
+          git config user.email "firefusion-gitops-bot@users.noreply.github.com"
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Promote image versions
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          chmod +x infrastructure/scripts/promote-image.sh
+
+          ./infrastructure/scripts/promote-image.sh \
+            "${{ inputs.provider }}" \
+            "${{ inputs.image_tag }}"
+
+      - name: Validate promoted overlay
+        run: |
+          kubectl kustomize \
+            "infrastructure/kubernetes/overlays/${{ inputs.provider }}" \
+            > /tmp/firefusion-promoted.yaml
+
+          grep '^kind: Deployment$' /tmp/firefusion-promoted.yaml
+          grep 'image:' /tmp/firefusion-promoted.yaml
+
+      - name: Check for Git changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit GitOps promotion
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git add \
+            "infrastructure/kubernetes/overlays/${{ inputs.provider }}/kustomization.yaml"
+
+          git commit \
+            -m "chore(gitops): promote ${{ inputs.provider }} to ${{ inputs.image_tag }}"
+
+      - name: Push GitOps promotion
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git push

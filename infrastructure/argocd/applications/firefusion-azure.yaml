@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: firefusion-azure
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: firefusion
+
+  source:
+    repoURL: https://github.com/InnovAIte-Deakin/InnovAIte_FireFusion_Project.git
+    targetRevision: feature/devops_mutli_cloud_deploy_and_operation_infrastructure
+    path: infrastructure/kubernetes/overlays/azure
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: firefusion
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+
+  revisionHistoryLimit: 10

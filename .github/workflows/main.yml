@@ -3,11 +3,11 @@ name: FireFusion Multi-API CI/CD Pipeline
 on:
   push:
     branches: [main, develop]
+
   pull_request:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   ci:
@@ -41,6 +41,7 @@ jobs:
             pip install -r backend/model-api/requirements.txt
           fi
 
+
   backend-tests:
     name: Backend Integration Tests
     runs-on: ubuntu-latest
@@ -50,22 +51,41 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Start the backend stack
+      - name: Start backend stack
         working-directory: backend
         run: docker compose --profile default up --build -d
 
-      - name: Wait for services to be ready
+      - name: Wait for backend services to be ready
         working-directory: backend
         run: |
-          urls="http://localhost:8080/openapi.json http://localhost:8081/model/hello http://localhost:8082/openapi.json"
+          urls="
+          http://localhost:8080/ready
+          http://localhost:8081/ready
+          http://localhost:8082/ready
+          "
+
           for url in $urls; do
-            echo "waiting for $url"
-            ok=""
+            echo "Waiting for $url"
+
+            ready=""
+
             for i in $(seq 1 40); do
-              if curl -fsS "$url" >/dev/null 2>&1; then echo "up: $url"; ok=1; break; fi
+              if curl -fsS "$url" >/dev/null 2>&1; then
+                echo "Ready: $url"
+                ready=1
+                break
+              fi
+
+              echo "Attempt $i/40 - service not ready yet"
               sleep 3
             done
-            if [ -z "$ok" ]; then echo "timeout waiting for $url"; docker compose --profile default logs; exit 1; fi
+
+            if [ -z "$ready" ]; then
+              echo "Timeout waiting for $url"
+              docker compose --profile default ps
+              docker compose --profile default logs
+              exit 1
+            fi
           done
 
       - name: Set up Python
@@ -73,7 +93,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install test dependencies
+      - name: Install backend test dependencies
         run: pip install -r backend/tests/requirements-test.txt
 
       - name: Seed a sample prediction so the live-feature checks have data
@@ -134,18 +154,24 @@ jobs:
         working-directory: backend
         run: docker compose --profile default logs
 
-      - name: Tear down
+      - name: Tear down backend stack
         if: always()
         working-directory: backend
         run: docker compose --profile default down -v
 
+
   docker-build-push:
     name: Build and Push API Images
     runs-on: ubuntu-latest
-    needs: ci
+
+    needs:
+      - backend-tests
+
     if: github.event_name == 'push'
 
     strategy:
+      fail-fast: false
+
       matrix:
         # The build context is backend/ (not each service directory) because
         # every image also COPYs the top-level shared/ package. Each
@@ -154,18 +180,17 @@ jobs:
           - service: firefusion-api
             context: ./backend
             dockerfile: ./backend/firefusion-api/Dockerfile
-            image: ghcr.io/${{ github.repository }}/firefusion-api
+            image: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/firefusion-api
 
           - service: aggregator-api
             context: ./backend
             dockerfile: ./backend/aggregator-api/Dockerfile
-            image: ghcr.io/${{ github.repository }}/aggregator-api
+            image: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/aggregator-api
 
-          # Enable once Dockerfile is added
-          # - service: model-api
-          #   context: ./backend
-          #   dockerfile: ./backend/model-api/Dockerfile
-          #   image: ghcr.io/${{ github.repository }}/model-api
+          - service: model-api
+            context: ./backend/model-api
+            dockerfile: ./backend/model-api/Dockerfile
+            image: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/model-api
 
     steps:
       - name: Checkout repository
@@ -174,13 +199,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
+      - name: Log in to Docker Hub
         if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta

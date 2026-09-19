@@ -1,0 +1,51 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-api-traffic
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/part-of: firefusion-platform
+
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - firefusion-api
+          - model-api
+          - aggregator-api
+
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - firefusion-api
+                  - model-api
+                  - aggregator-api
+
+      ports:
+        - protocol: TCP
+          port: 8080
+
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - firefusion-api
+                  - model-api
+                  - aggregator-api
+
+      ports:
+        - protocol: TCP
+          port: 8080

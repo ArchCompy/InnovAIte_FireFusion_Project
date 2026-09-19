@@ -1,18 +1,23 @@
-FROM python:3.14
+FROM python:3.14-slim
 
 WORKDIR /code
 
-# Build context is backend/ (not this directory) so shared/ is reachable.
-# See docs/distributed-tracing.md.
-
-# this contains all the dependencies required for the application
-COPY ./aggregator-api/requirements.txt /code/requirements.txt
+# Install Python dependencies before copying application code
+# to improve Docker layer caching.
+COPY ./requirements.txt /code/requirements.txt
 
 RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
-COPY ./aggregator-api/app /code/app
-COPY ./shared /code/shared
+# Create a dedicated non-root user for the application.
+RUN useradd --create-home --shell /usr/sbin/nologin appuser
 
-# TODO: update hardcoded value
+COPY ./app /code/app
+
+# Ensure the application files are owned by the non-root user.
+RUN chown -R appuser:appuser /code
+
+USER appuser
+
+EXPOSE 8080
 
 CMD ["fastapi", "run", "app/main.py", "--port", "8080"]

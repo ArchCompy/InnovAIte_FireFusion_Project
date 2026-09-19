@@ -2,14 +2,19 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Build context is backend/ (not this directory) so shared/ is reachable.
-# See docs/distributed-tracing.md.
+COPY requirements.txt .
 
-COPY model-api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY model-api/. .
-COPY shared ./shared
+# Create a dedicated non-root user for the application.
+RUN useradd --create-home --shell /usr/sbin/nologin appuser
+
+COPY . .
+
+# Ensure the application files are owned by the non-root user.
+RUN chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 8080
 

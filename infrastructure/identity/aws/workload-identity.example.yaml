@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: firefusion-backend
+  namespace: firefusion
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::REPLACE_WITH_ACCOUNT_ID:role/firefusion-backend"

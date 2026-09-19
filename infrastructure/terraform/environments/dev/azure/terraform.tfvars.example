@@ -1,0 +1,15 @@
+project_name = "firefusion"
+environment  = "dev"
+location     = "australiaeast"
+
+node_count     = 1
+node_min_count = 1
+node_max_count = 3
+node_vm_size   = "Standard_DS2_v2"
+
+tags = {
+  Project     = "FireFusion"
+  Environment = "dev"
+  ManagedBy   = "Terraform"
+  Component   = "CloudInfrastructure"
+}

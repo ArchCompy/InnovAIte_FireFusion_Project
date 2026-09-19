@@ -1,0 +1,33 @@
+name: GCP OIDC Authentication Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  gcp-oidc:
+    name: Validate GCP OIDC Authentication
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP using Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Verify GCP identity
+        run: |
+          gcloud auth list
+          gcloud config set project "${{ vars.GCP_PROJECT_ID }}"
+          gcloud config get-value project

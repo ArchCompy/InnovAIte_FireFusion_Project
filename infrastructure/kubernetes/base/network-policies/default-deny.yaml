@@ -1,0 +1,14 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/part-of: firefusion-platform
+
+spec:
+  podSelector: {}
+
+  policyTypes:
+    - Ingress
+    - Egress

@@ -1,0 +1,156 @@
+name: DevSecOps Security Validation
+
+on:
+  workflow_dispatch:
+
+  push:
+    paths:
+      - "backend/**"
+      - "infrastructure/**"
+      - ".github/workflows/security-ci.yml"
+
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - "backend/**"
+      - "infrastructure/**"
+      - ".github/workflows/security-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  secret-validation:
+    name: Secret and Credential Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Scan for obvious committed credentials
+        run: |
+          if grep -RniE \
+            'BEGIN PRIVATE KEY|AKIA[0-9A-Z]{16}|AWS_SECRET_ACCESS_KEY[[:space:]]*=|client_secret[[:space:]]*=|private_key[[:space:]]*=|password[[:space:]]*=' \
+            backend infrastructure; then
+            echo "Potential credential material detected."
+            exit 1
+          fi
+
+          echo "No obvious credential material detected."
+
+  container-security:
+    name: Backend Container Security Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify non-root Docker configuration
+        run: |
+          for dockerfile in \
+            backend/firefusion-api/Dockerfile \
+            backend/model-api/Dockerfile \
+            backend/aggregator-api/Dockerfile
+          do
+            echo "Checking ${dockerfile}"
+
+            grep -q '^USER appuser' "${dockerfile}" || {
+              echo "${dockerfile} does not run as appuser."
+              exit 1
+            }
+
+            if grep -nE '^ENV .*?(PASSWORD|SECRET|API_KEY|TOKEN)' "${dockerfile}"; then
+              echo "Sensitive value must not be hardcoded using ENV in ${dockerfile}."
+              exit 1
+            fi
+          done
+
+          echo "All backend Dockerfiles pass non-root and credential checks."
+
+  kubernetes-security:
+    name: Kubernetes Security Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+          kubectl version --client
+
+      - name: Render Azure Kubernetes overlay
+        run: |
+          kubectl kustomize infrastructure/kubernetes/overlays/azure \
+            > /tmp/firefusion-azure.yaml
+
+      - name: Render AWS Kubernetes overlay
+        run: |
+          kubectl kustomize infrastructure/kubernetes/overlays/aws \
+            > /tmp/firefusion-aws.yaml
+
+      - name: Render GCP Kubernetes overlay
+        run: |
+          kubectl kustomize infrastructure/kubernetes/overlays/gcp \
+            > /tmp/firefusion-gcp.yaml
+
+      - name: Verify security controls in rendered manifests
+        run: |
+          for manifest in \
+            /tmp/firefusion-azure.yaml \
+            /tmp/firefusion-aws.yaml \
+            /tmp/firefusion-gcp.yaml
+          do
+            echo "Checking ${manifest}"
+
+            grep -q 'runAsNonRoot: true' "${manifest}" || {
+              echo "runAsNonRoot control missing."
+              exit 1
+            }
+
+            grep -q 'allowPrivilegeEscalation: false' "${manifest}" || {
+              echo "Privilege escalation protection missing."
+              exit 1
+            }
+
+            grep -q 'type: RuntimeDefault' "${manifest}" || {
+              echo "RuntimeDefault seccomp profile missing."
+              exit 1
+            }
+
+            grep -q 'kind: NetworkPolicy' "${manifest}" || {
+              echo "NetworkPolicy missing."
+              exit 1
+            }
+
+            grep -q 'kind: RoleBinding' "${manifest}" || {
+              echo "RBAC RoleBinding missing."
+              exit 1
+            }
+          done
+
+          echo "All Kubernetes overlays contain required security controls."
+
+  trivy-security-scan:
+    name: Trivy Infrastructure Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy configuration scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true

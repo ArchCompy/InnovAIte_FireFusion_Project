@@ -1,0 +1,24 @@
+project_name = "firefusion"
+environment  = "dev"
+
+project_id = "replace-with-your-gcp-project-id"
+region     = "australia-southeast1"
+
+network_cidr  = "10.30.0.0/20"
+pods_cidr     = "10.40.0.0/16"
+services_cidr = "10.50.0.0/20"
+
+node_count        = 1
+node_min_count    = 1
+node_max_count    = 3
+node_machine_type = "e2-standard-2"
+
+labels = {
+  project     = "firefusion"
+  environment = "dev"
+  managed_by  = "terraform"
+  component   = "cloud-infrastructure"
+}
+# Replace with the university/VPN/management network CIDR approved for
+# Kubernetes API administration before terraform plan/apply.
+master_authorized_network_cidr = "REPLACE_WITH_APPROVED_CIDR"

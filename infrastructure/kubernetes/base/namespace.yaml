@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: firefusion
+  labels:
+    app.kubernetes.io/name: firefusion
+    app.kubernetes.io/part-of: firefusion-platform

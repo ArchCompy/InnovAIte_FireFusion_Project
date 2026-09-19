@@ -1,0 +1,81 @@
+name: Terraform Multi-Cloud CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - developer
+    paths:
+      - "infrastructure/terraform/**"
+      - ".github/workflows/terraform-ci.yml"
+
+  push:
+    branches:
+      - developer
+      - "feature/**"
+    paths:
+      - "infrastructure/terraform/**"
+      - ".github/workflows/terraform-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  terraform-format:
+    name: Terraform Format Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive infrastructure/terraform
+
+  terraform-validate:
+    name: Validate - ${{ matrix.cloud }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        cloud:
+          - azure
+          - aws
+          - gcp
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: infrastructure/terraform/environments/dev/${{ matrix.cloud }}
+        run: terraform init -backend=false -input=false
+
+      - name: Terraform Validate
+        working-directory: infrastructure/terraform/environments/dev/${{ matrix.cloud }}
+        run: terraform validate -no-color
+
+  terraform-security:
+    name: Terraform IaC Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Trivy IaC Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: infrastructure/terraform
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true

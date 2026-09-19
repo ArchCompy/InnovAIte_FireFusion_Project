@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: firefusion-gcp
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: firefusion
+
+  source:
+    repoURL: https://github.com/InnovAIte-Deakin/InnovAIte_FireFusion_Project.git
+    targetRevision: main
+    path: infrastructure/kubernetes/overlays/gcp
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: firefusion
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+
+  revisionHistoryLimit: 10

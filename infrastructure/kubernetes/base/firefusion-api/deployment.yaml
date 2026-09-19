@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: firefusion-api
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/name: firefusion-api
+    app.kubernetes.io/part-of: firefusion-platform
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: firefusion-api
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: firefusion-api
+        app.kubernetes.io/part-of: firefusion-platform
+
+    spec:
+      serviceAccountName: firefusion-backend
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: firefusion-api
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          image: firefusion/firefusion-api:latest
+          imagePullPolicy: Always
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          env:
+            - name: BROKER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: firefusion-runtime-secrets
+                  key: BROKER_URL
+
+            - name: CACHE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: firefusion-runtime-secrets
+                  key: CACHE_URL
+
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: firefusion-runtime-secrets
+                  key: DB_URL
+
+            - name: PYTHONUNBUFFERED
+              valueFrom:
+                configMapKeyRef:
+                  name: firefusion-runtime-config
+                  key: PYTHONUNBUFFERED
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - projects/firefusion-project.yaml
+  - applications/firefusion-gcp.yaml
+  - applications/firefusion-azure.yaml
+  - applications/firefusion-aws.yaml

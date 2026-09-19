@@ -1,0 +1,58 @@
+name: Cloud Identity Readiness
+
+on:
+  workflow_dispatch:
+
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - "infrastructure/identity/**"
+      - ".github/workflows/cloud-identity-check.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  identity-validation:
+    name: Validate Cloud Identity Configuration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify identity templates exist
+        run: |
+          test -f infrastructure/identity/README.md
+          test -f infrastructure/identity/SECURITY.md
+
+          test -f infrastructure/identity/azure/github-oidc.env.example
+          test -f infrastructure/identity/azure/workload-identity.example.yaml
+
+          test -f infrastructure/identity/aws/github-oidc.env.example
+          test -f infrastructure/identity/aws/workload-identity.example.yaml
+
+          test -f infrastructure/identity/gcp/github-oidc.env.example
+          test -f infrastructure/identity/gcp/workload-identity.example.yaml
+
+          echo "All cloud identity templates are present."
+
+      - name: Check for obvious credential material
+        run: |
+          if grep -RniE \
+            'BEGIN PRIVATE KEY|AKIA[0-9A-Z]{16}|client_secret[[:space:]]*=|private_key[[:space:]]*=|password[[:space:]]*=' \
+            infrastructure/identity; then
+            echo "Potential credential material detected."
+            exit 1
+          fi
+
+          echo "No obvious credential material detected."
+
+      - name: Confirm OIDC readiness
+        run: |
+          echo "GitHub Actions is configured with id-token: write."
+          echo "Cloud authentication is intentionally not enabled yet."
+          echo "Azure, AWS, and GCP identity templates are available for the approved provider."

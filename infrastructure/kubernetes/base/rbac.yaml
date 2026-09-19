@@ -1,0 +1,33 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: firefusion-backend
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/name: firefusion-backend
+    app.kubernetes.io/part-of: firefusion-platform
+
+# The backend workloads currently do not require direct access
+# to Kubernetes API resources.
+# This intentionally empty Role documents least-privilege access.
+rules: []
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: firefusion-backend
+  namespace: firefusion
+  labels:
+    app.kubernetes.io/name: firefusion-backend
+    app.kubernetes.io/part-of: firefusion-platform
+
+subjects:
+  - kind: ServiceAccount
+    name: firefusion-backend
+    namespace: firefusion
+
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: firefusion-backend
