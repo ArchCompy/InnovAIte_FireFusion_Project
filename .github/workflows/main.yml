@@ -147,20 +147,23 @@ jobs:
 
     strategy:
       matrix:
+        # The build context is backend/ (not each service directory) because
+        # every image also COPYs the top-level shared/ package. Each
+        # Dockerfile's COPY paths are relative to backend/.
         include:
           - service: firefusion-api
-            context: ./backend/firefusion-api
+            context: ./backend
             dockerfile: ./backend/firefusion-api/Dockerfile
             image: ghcr.io/${{ github.repository }}/firefusion-api
 
           - service: aggregator-api
-            context: ./backend/aggregator-api
+            context: ./backend
             dockerfile: ./backend/aggregator-api/Dockerfile
             image: ghcr.io/${{ github.repository }}/aggregator-api
 
           # Enable once Dockerfile is added
           # - service: model-api
-          #   context: ./backend/model-api
+          #   context: ./backend
           #   dockerfile: ./backend/model-api/Dockerfile
           #   image: ghcr.io/${{ github.repository }}/model-api
 

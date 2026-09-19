@@ -11,9 +11,16 @@ from ...config.config import environment
 from ..models.geojson import FeatureCollection
 from ..models.forecast_status import ForecastMeta, ForecastStatus
 from ..repositories.forecast_history_repository import ForecastHistoryRepository
+from shared.tracing import set_span_attributes, start_consumer_span
 
 DEFAULT_HISTORY_LIMIT = 100
 MAX_HISTORY_LIMIT = 1000
+
+# Span attribute names for the forecast path. Values are always scalars
+# (counts, status, booleans) - never the GeoJSON payload itself.
+ATTR_FEATURE_COUNT = "forecast.feature_count"
+ATTR_STATUS = "forecast.status"
+ATTR_FROM_CACHE = "forecast.from_cache"
 
 
 logger = logging.getLogger(__name__)
@@ -49,6 +56,21 @@ def _with_meta(feature_collection: dict, meta: ForecastMeta) -> dict:
     """
     feature_collection["meta"] = meta.model_dump(exclude_none=True)
     return feature_collection
+
+
+def _tag_and_return(feature_collection: dict, meta: ForecastMeta, *, from_cache: bool) -> dict:
+    """Attach meta, then tag the current span with the same information.
+
+    Never the GeoJSON payload itself - only counts and status, which is all
+    a trace needs to show how the forecast path behaved.
+    """
+    result = _with_meta(feature_collection, meta)
+    set_span_attributes({
+        ATTR_FEATURE_COUNT: len(result.get("features", [])),
+        ATTR_STATUS: meta.status.value,
+        ATTR_FROM_CACHE: from_cache,
+    })
+    return result
 
 
 def _unavailable_meta() -> ForecastMeta:
@@ -179,6 +201,12 @@ class ForecastService:
         )
         await ws_manager.broadcast(broadcast_payload)
 
+        set_span_attributes({
+            ATTR_FEATURE_COUNT: len(validated_payload.get("features", [])),
+            ATTR_STATUS: ForecastStatus.LIVE.value,
+            ATTR_FROM_CACHE: False,  # freshly written, not read back from cache
+        })
+
         return validated_payload
 
     async def on_prediction_message(self, message):
@@ -187,9 +215,15 @@ class ForecastService:
         """
 
         async with message.process():
-            payload = json.loads(message.body)
+            # Extracts model-api's trace context from the "predictions"
+            # message headers, so this span (and store_prediction's work
+            # inside it) is part of the same trace as the aggregator ->
+            # model-api -> firefusion-api pipeline that produced it, rather
+            # than starting a new, disconnected one.
+            with start_consumer_span("predictions queue consume", message.headers):
+                payload = json.loads(message.body)
 
-            await self.store_prediction(payload)
+                await self.store_prediction(payload)
 
     async def fetch_predictions(self):
         """Return the latest forecast as a GeoJSON FeatureCollection.
@@ -214,7 +248,7 @@ class ForecastService:
                 "No cached prediction available; "
                 "returning empty FeatureCollection"
             )
-            return _with_meta(_empty(), _unavailable_meta())
+            return _tag_and_return(_empty(), _unavailable_meta(), from_cache=True)
 
         try:
             payload = json.loads(data)
@@ -246,7 +280,7 @@ class ForecastService:
                 "Serving stale forecast (age_seconds=%s)", meta.age_seconds
             )
 
-        return _with_meta(feature_collection, meta)
+        return _tag_and_return(feature_collection, meta, from_cache=True)
 
     async def get_forecast_at(self, timestamp: datetime) -> Optional[dict]:
         """Return the forecast that was current at the given moment.
@@ -259,10 +293,11 @@ class ForecastService:
         record = await self.history_repository.get_at(timestamp)
 
         if record is None:
+            set_span_attributes({ATTR_FEATURE_COUNT: 0, ATTR_FROM_CACHE: False})
             return None
 
         meta = _classify_freshness(record.generated_at.isoformat())
-        return _with_meta(dict(record.payload), meta)
+        return _tag_and_return(dict(record.payload), meta, from_cache=False)
 
     async def get_forecast_history(
         self,
@@ -282,9 +317,21 @@ class ForecastService:
         )
 
         results = []
+        total_features = 0
         for record in records:
             meta = _classify_freshness(record.generated_at.isoformat())
-            results.append(_with_meta(dict(record.payload), meta))
+            entry = _with_meta(dict(record.payload), meta)
+            total_features += len(entry.get("features", []))
+            results.append(entry)
+
+        # One span covers many entries here, so feature_count/status are
+        # aggregated (total across the window, entry count) rather than the
+        # single-entry attributes _tag_and_return uses elsewhere.
+        set_span_attributes({
+            ATTR_FEATURE_COUNT: total_features,
+            "forecast.entry_count": len(results),
+            ATTR_FROM_CACHE: False,
+        })
         return results
 
     async def prune_expired_history(self) -> int:

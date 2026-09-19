@@ -7,6 +7,7 @@ from .internal.services.forecast_service import ForecastService
 from .internal.services.messaging_service import MessagingService
 from fastapi.middleware.cors import CORSMiddleware
 from .config.config import environment
+from shared.tracing import setup_tracing
 
 @asynccontextmanager
 async def init_lifespan_objects(app: FastAPI):
@@ -23,6 +24,15 @@ async def init_lifespan_objects(app: FastAPI):
     await close_pool()
 
 app = FastAPI(lifespan=init_lifespan_objects)
+
+setup_tracing(
+    app,
+    environment.otel_service_name,
+    enabled=environment.otel_traces_enabled,
+    otlp_endpoint=environment.otel_exporter_otlp_endpoint,
+    instrument_db=True,
+    instrument_cache=True,
+)
 
 # Restricted to the configured dashboard origins. A wildcard origin combined
 # with allow_credentials is rejected by browsers and is unsafe once deployed,

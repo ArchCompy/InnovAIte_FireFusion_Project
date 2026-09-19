@@ -45,5 +45,11 @@ class Environment(BaseSettings):
     # (run externally, see docs/forecast-history.md) deletes them.
     forecast_history_retention_days: int = 30
 
+    # Distributed tracing. Off by default so local development is
+    # unaffected unless explicitly enabled. See docs/distributed-tracing.md.
+    otel_traces_enabled: bool = False
+    otel_exporter_otlp_endpoint: str = "tempo:4317"
+    otel_service_name: str = "firefusion-api"
+
 
 environment = Environment()  # type: ignore
