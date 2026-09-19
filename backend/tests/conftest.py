@@ -25,6 +25,7 @@ TEST_CACHE_URL = os.getenv(
 )
 
 PREDICTION_CACHE_KEY = "predictions"
+GENERATED_AT_CACHE_KEY = "predictions:generated_at"
 
 # forecast_service reads freshness settings from config.config, whose
 # Environment requires these even for tests that never touch the database or
@@ -94,8 +95,12 @@ def agg():
 def prediction_cache():
     """Provide isolated access to the running prediction cache.
 
-    The previous value is restored after every test so integration tests
-    remain independent of execution order and do not destroy developer data.
+    Both the forecast and its predictions:generated_at timestamp are
+    restored after every test so integration tests remain independent of
+    execution order and do not destroy developer data. The timestamp is also
+    cleared on entry: a leftover one from an earlier test or a real prediction
+    would otherwise make a forecast written directly to Redis look live
+    instead of having an unknown age.
     """
 
     client = Redis.from_url(
@@ -113,16 +118,18 @@ def prediction_cache():
             "Redis test dependency is not reachable"
         )
 
-    original_prediction = client.get(PREDICTION_CACHE_KEY)
+    original = {
+        key: client.get(key)
+        for key in (PREDICTION_CACHE_KEY, GENERATED_AT_CACHE_KEY)
+    }
+    client.delete(GENERATED_AT_CACHE_KEY)
 
     try:
         yield client
     finally:
-        if original_prediction is None:
-            client.delete(PREDICTION_CACHE_KEY)
-        else:
-            client.set(
-                PREDICTION_CACHE_KEY,
-                original_prediction,
-            )
+        for key, value in original.items():
+            if value is None:
+                client.delete(key)
+            else:
+                client.set(key, value)
         client.close()

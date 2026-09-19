@@ -10,6 +10,7 @@ as test_forecast_service_unit.py and test_graceful_degradation.py.
 import asyncio
 import json
 import logging
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -18,6 +19,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 APP_DIR = Path(__file__).resolve().parents[1] / "firefusion-api"
+
+# RabbitMQ the running stack consumes predictions from. Overridable, like
+# TEST_CACHE_URL in conftest.py, so the test can target a stack that isn't on
+# the default port instead of publishing into whichever broker owns 5672.
+TEST_BROKER_URL = os.getenv("TEST_BROKER_URL", "amqp://guest:guest@localhost:5672")
 REPO_SOURCE_PATH = (
     APP_DIR / "app" / "internal" / "repositories" / "forecast_history_repository.py"
 )
@@ -293,7 +299,7 @@ def test_forecast_history_end_to_end_via_running_stack(ff, http):
     async def run():
         try:
             connection = await aio_pika.connect_robust(
-                "amqp://guest:guest@localhost:5672", timeout=5
+                TEST_BROKER_URL, timeout=5
             )
         except Exception as exc:
             pytest.skip(f"RabbitMQ not reachable locally: {exc}")
