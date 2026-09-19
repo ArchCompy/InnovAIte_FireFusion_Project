@@ -2,12 +2,16 @@ from fastapi import FastAPI
 from app.routers import hello, misinformation_controller
 from app.routers import forecast
 from contextlib import asynccontextmanager
+from .internal.repositories.database import open_pool, close_pool
 from .internal.services.forecast_service import ForecastService
 from .internal.services.messaging_service import MessagingService
 from fastapi.middleware.cors import CORSMiddleware
+from .config.config import environment
 
 @asynccontextmanager
 async def init_lifespan_objects(app: FastAPI):
+    await open_pool()
+
     messaging_service = await MessagingService.create()
     forecast_service = ForecastService()
 
@@ -16,14 +20,18 @@ async def init_lifespan_objects(app: FastAPI):
     yield
 
     await messaging_service.close()
+    await close_pool()
 
 app = FastAPI(lifespan=init_lifespan_objects)
 
+# Restricted to the configured dashboard origins. A wildcard origin combined
+# with allow_credentials is rejected by browsers and is unsafe once deployed,
+# so the permitted origins are configured per environment.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=environment.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET"],
     allow_headers=["*"]
 )
 

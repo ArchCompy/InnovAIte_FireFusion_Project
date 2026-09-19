@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 import torch
 from torch import Tensor, nn
+from torch.utils.checkpoint import checkpoint
 
 from .attention import PatchwiseAttention2d
 from .bilstm import PerCellBiLSTMLayer
@@ -69,6 +70,7 @@ class ForecasterConfig:
     use_biconvlstm: bool = False
     biconvlstm_hidden_size: int = 8
     biconvlstm_kernel_size: int = 3
+    grad_checkpointing: bool = True
 
     def __post_init__(self) -> None:
         if self.use_bilstm and self.use_biconvlstm:
@@ -100,6 +102,7 @@ def _backfill_config_defaults(config: ForecasterConfig) -> ForecasterConfig:
         "use_biconvlstm": False,
         "biconvlstm_hidden_size": 8,
         "biconvlstm_kernel_size": 3,
+        "grad_checkpointing": True,
     }
     for field_name, default_value in defaults.items():
         if not hasattr(config, field_name):
@@ -217,6 +220,49 @@ class MultivariateTSForecaster(nn.Module):
             return self.bilstm
         return self.biconvlstm
 
+    def _run_cell(
+        self,
+        cell: ConvLSTMCell,
+        x_t: Tensor,
+        state: Optional[Tuple[Tensor, Tensor]],
+    ) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
+        """Advance one ConvLSTM timestep, optionally under gradient checkpointing.
+
+        Checkpointing trades a recomputation of this single step's forward pass
+        during backprop for not storing its activations, which is what keeps the
+        unrolled sequence (seq_len steps x the patchwise-attention gate) from
+        exhausting GPU memory. It is engaged only for attention cells, and only
+        while training with autograd enabled; convolutional-gate cells, inference
+        and the ``grad_checkpointing=False`` config all run the cell directly so
+        the plain baseline pays no recomputation cost.
+        """
+        use_ckpt = (
+            self.config.grad_checkpointing
+            and cell.attention != "none"
+            and self.training
+            and torch.is_grad_enabled()
+        )
+        if not use_ckpt:
+            return cell(x_t, state)
+
+        # checkpoint() needs tensor args, so materialise the zero state that the
+        # cell would otherwise create internally on the first step.
+        if state is None:
+            zeros = torch.zeros(
+                x_t.size(0), cell.hidden_channels, x_t.size(2), x_t.size(3),
+                device=x_t.device, dtype=x_t.dtype,
+            )
+            h, c = zeros, zeros.clone()
+        else:
+            h, c = state
+
+        def _step(x_in: Tensor, h_in: Tensor, c_in: Tensor) -> Tuple[Tensor, Tensor]:
+            _, (h_out, c_out) = cell(x_in, (h_in, c_in))
+            return h_out, c_out
+
+        h_new, c_new = checkpoint(_step, x_t, h, c, use_reentrant=False)
+        return h_new, (h_new, c_new)
+
     def forward(self, x: Tensor) -> Tensor:
         """
         Forward pass through the 2D ConvLSTM forecaster.
@@ -265,17 +311,17 @@ class MultivariateTSForecaster(nn.Module):
         h1_state = None
         h1_outputs = []
         for t in range(seq_len):
-            h1, h1_state = self.convlstm1(x[:, t, :, :, :], h1_state)
+            h1, h1_state = self._run_cell(self.convlstm1, x[:, t, :, :, :], h1_state)
             h1_outputs.append(h1)
-        
+
         h1_outputs_dropped = [self.dropout1(h) for h in h1_outputs]
-        
+
         # Second ConvLSTM2d processes first layer outputs
         active_layer = self.temporal_layer
         h2_state = None
         h2_outputs = []
         for t in range(seq_len):
-            h2, h2_state = self.convlstm2(h1_outputs_dropped[t], h2_state)
+            h2, h2_state = self._run_cell(self.convlstm2, h1_outputs_dropped[t], h2_state)
 
             if active_layer is not None:
                 h2_outputs.append(self.dropout2(h2))
