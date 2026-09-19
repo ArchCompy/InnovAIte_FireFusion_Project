@@ -1,10 +1,12 @@
 # Fire Risk Map API Contract (Backend to Front-end)
 
-**Status:** Draft for review — revision 2
+**Status:** Draft for review — revision 3
 **Author:** Arsh Dang
 **Reviewer:** Viet Quang Nguyen
 **Streams affected:** Back-end (producer), Front-end (consumer)
-**Sprint 1 goal:** Goals 2 and 3 — stable APIs for integration, and one end-to-end integration.
+**Sprint 1 foundation:** Goals 2 and 3 — stable APIs for integration and one end-to-end integration.
+**Sprint 2 alignment:** Improve Fire Risk Map integration reliability, failure handling and regression protection.
+**Sprint 2 update:** Draft PR #238 proposes explicit cache-corruption and WebSocket delivery semantics.
 
 ## Scope
 
@@ -40,9 +42,14 @@ scope and can be added later without breaking this contract.
 WS /api/ws
 ```
 
-The existing WebSocket pushes the same `FeatureCollection` payload when a new
-prediction arrives. Front-end may use it for live refresh, but the Fire Risk Map must
-work correctly using the REST endpoint alone.
+The WebSocket pushes the same validated `FeatureCollection` payload after a new
+prediction has been written successfully to Redis. Delivery is best effort: failure
+to send to one client is logged, that stale client is removed, and delivery continues
+to the remaining clients. A WebSocket delivery failure does not roll back the cached
+prediction.
+
+Front-end may use the WebSocket for live refresh, but the Fire Risk Map must continue
+to work correctly using the REST endpoint alone.
 
 ---
 
@@ -133,31 +140,49 @@ know which is in use:
 
 ## 4. Behaviour when data is unavailable
 
-**This is a change from the original behaviour.** The endpoint previously returned
-`null` when the prediction cache was empty. A bare `null` is not valid GeoJSON and
-would break a map client expecting a `FeatureCollection`.
+A missing Redis prediction and a corrupted Redis prediction represent different
+states. A missing value is a normal no-prediction condition. A present value that
+cannot satisfy the API contract is an operational failure and must not be disguised
+as normal empty data.
 
 | Situation | Status | Body |
 |---|---|---|
-| Live prediction available | `200` | `FeatureCollection` with features |
-| No live prediction, fallback available (planned) | `200` | `FeatureCollection` from sample data |
-| No data at all | `200` | `{"type": "FeatureCollection", "features": []}` |
-| Backend or dependency failure | `503` | `{"detail": "Forecast data temporarily unavailable"}` |
+| Valid live prediction available | `200` | Valid `FeatureCollection` with features |
+| No live prediction, fallback available (planned) | `200` | Valid sample `FeatureCollection` |
+| No cached prediction exists | `200` | `{"type": "FeatureCollection", "features": []}` |
+| Cached prediction contains malformed JSON | `503` | `{"detail": "Forecast data temporarily unavailable"}` |
+| Cached prediction is not a JSON object | `503` | `{"detail": "Forecast data temporarily unavailable"}` |
+| Cached prediction violates the GeoJSON schema | `503` | `{"detail": "Forecast data temporarily unavailable"}` |
+| Redis is unavailable or times out | `503` | `{"detail": "Forecast data temporarily unavailable"}` |
+| Unexpected application failure | `500` | Server error response |
 
-The empty `FeatureCollection` lets the map render cleanly with no polygons instead of
-erroring. Front-end should handle three cases: features present, features empty, and
-a non-200 response.
+Every successful `200` response contains a valid `FeatureCollection`. The empty
+`FeatureCollection` is reserved for the normal condition where no prediction exists.
+Corrupted cached data is reported explicitly so operational failures cannot appear to
+Front-end as a valid no-risk or no-data result.
+
+Front-end should handle three response states: features present, features empty, and
+a non-`200` response.
 
 ---
 
 ## 5. Confirmed and open points
 
-Confirmed:
+Confirmed cross-stream contract:
 
 - **`risk_factor` is 1–5 with 1 most severe**, the inverse of the model's internal
   scale (AI Modelling).
 - **`risk_factor` alone is sufficient for the Sprint 1 map**, served through
   `GET /api/bushfire-forecast` (Front-end).
+
+Implemented Backend reliability behaviour in Draft PR #238:
+
+- A missing cached prediction returns `200` with an empty `FeatureCollection`.
+- A present but malformed or schema-invalid cached prediction returns `503`.
+- Incoming predictions are validated before Redis or WebSocket side effects.
+- A validated prediction is cached before WebSocket broadcast begins.
+- WebSocket delivery is best effort; failed clients are logged and removed without
+  rolling back the cached prediction or blocking healthy clients.
 
 Still open:
 
@@ -165,19 +190,29 @@ Still open:
 |---|---|---|
 | 1 | Will `fire_probability` be present on every feature, or only some? | AI Modelling |
 | 2 | Which sample dataset becomes the agreed fallback | AI Modelling and Back-end |
-| 3 | Does Front-end want the WebSocket for live refresh in Sprint 1, or REST only? | Front-end |
+| 3 | Does Front-end intend to use WebSocket live refresh, or REST only? | Front-end |
 
 ---
 
 ## 6. Acceptance criteria
 
-- `GET /api/bushfire-forecast` returns a valid `FeatureCollection` matching this
-  schema in all situations in section 4.
-- `risk_factor` values are integers in `1`–`5` on the Front-end convention.
-- The endpoint is documented in the published Swagger/OpenAPI output.
-- Automated tests cover a known-good `200` response, the empty-data case, and the
-  `503` failure path.
-- The Front-end Fire Risk Map renders live data retrieved from this endpoint.
+- Every successful `GET /api/bushfire-forecast` response is a valid
+  `FeatureCollection` matching this contract.
+- A missing cached prediction returns `200` with an empty `FeatureCollection`.
+- Malformed, non-object or schema-invalid cached predictions return `503`.
+- Redis connection failures and timeouts return `503`.
+- Unexpected application errors are not misreported as normal no-data or Redis
+  failures.
+- `risk_factor` values are strict integers in `1`–`5` using the Front-end convention.
+- Predictions are validated before they are cached or broadcast.
+- Redis cache writes complete before WebSocket broadcast begins.
+- Failure to deliver to one WebSocket client is logged and does not prevent delivery
+  to healthy clients.
+- The endpoint publishes its `200` `FeatureCollection` response schema, and its `503` response is documented in Swagger/OpenAPI.
+- Automated tests cover valid data, missing data, corrupted cache data, Redis
+  failures, prediction ordering and WebSocket delivery resilience.
+- Front-end rendering with live data remains a cross-stream integration validation
+  requirement and is not established by Backend unit tests alone.
 
 ---
 
@@ -188,3 +223,7 @@ Still open:
   `POST /predict/bushfire/forecast`, and a shared `store_prediction()` path so the
   RabbitMQ and REST flows share validation, caching and WebSocket broadcast. Changes
   to `forecast_service.py` need coordinating across both branches before merge.
+- **Draft PR #238** (Zehong Li) — Sprint 2 Fire Risk Map Backend reliability work:
+  strict GeoJSON validation, Redis configuration and timeout handling,
+  corrupted-cache semantics, prediction validation and side-effect ordering,
+  WebSocket delivery resilience, and automated regression coverage.

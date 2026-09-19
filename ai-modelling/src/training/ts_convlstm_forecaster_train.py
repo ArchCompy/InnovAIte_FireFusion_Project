@@ -37,6 +37,13 @@ BATCH_SIZE = 8
 EPOCHS = 50
 LEARNING_RATE = 0.001
 
+# Attention (patchwise / M3). ATTENTION="none" reproduces the M1 baseline.
+ATTENTION = "none"          # "none" | "patchwise"
+FOOTPRINT = 7               # patch side length (odd)
+DILATION = 1               # cell spacing within the patch
+SHARE_PLANES = 8            # output channels sharing one attention weight set
+ATTENTION_LAYERS = (1,)     # which ConvLSTM layers use attention
+
 TRAIN_VAL_RATIO = 0.9
 FIRE_THRESHOLD = 0.5
 
@@ -374,7 +381,7 @@ def load_and_format_gridded_data(csv_path, feature_cols=None):
     df = pd.concat([df.reset_index(drop=True), coords_df.reset_index(drop=True)], axis=1)
 
     # Preserve the full weather time axis before removing invalid spatial rows
-    df['datetime'] = pd.to_datetime(df['datetime'])
+    df['datetime'] = pd.to_datetime(df['datetime'], format='mixed')
     unique_times = sorted(df['datetime'].unique().tolist())
     print(f"Timesteps: {len(unique_times)}")
 
@@ -627,12 +634,17 @@ def main():
     val_scaled = scale_and_fill(val_grid)
     test_scaled = scale_and_fill(test_grid)
 
+    # Add is_burning to input
+    train_input = np.concatenate([train_scaled, train_labels], axis=-1)
+    val_input = np.concatenate([val_scaled, val_labels],   axis=-1)
+    test_input = np.concatenate([test_scaled, test_labels],  axis=-1)
+
     print("STEP 4: Create Datasets with Sliding Window")
 
     # Split features and labels into train/validation sets
-    train_dataset = GriddedTimeSeriesDataset(train_scaled, train_labels, INPUT_STEPS, HORIZON)
-    val_dataset   = GriddedTimeSeriesDataset(val_scaled, val_labels, INPUT_STEPS, HORIZON)
-    test_dataset  = GriddedTimeSeriesDataset(test_scaled, test_labels, INPUT_STEPS, HORIZON)
+    train_dataset = GriddedTimeSeriesDataset(train_input, train_labels, INPUT_STEPS, HORIZON)
+    val_dataset   = GriddedTimeSeriesDataset(val_input, val_labels, INPUT_STEPS, HORIZON)
+    test_dataset  = GriddedTimeSeriesDataset(test_input, test_labels, INPUT_STEPS, HORIZON)
 
     print(f"Train timesteps: {len(train_scaled)}")
     print(f"Val timesteps: {len(val_scaled)}")
@@ -652,12 +664,17 @@ def main():
     print("STEP 6: Initialise ConvLSTM Model")
     
     config = ForecasterConfig(
-        input_channels=n_features,
+        input_channels=n_features + 1, # weather features + is_burning
         horizon=HORIZON,
         output_channels=1,
         hidden_size_1=32,
         hidden_size_2=16,
-        dropout=0.2
+        dropout=0.2,
+        attention=ATTENTION,
+        footprint=FOOTPRINT,
+        dilation=DILATION,
+        share_planes=SHARE_PLANES,
+        attention_layers=ATTENTION_LAYERS,
     )
     
     model = MultivariateTSForecaster(config).to(DEVICE)
@@ -751,6 +768,8 @@ def main():
             # Key name changed to "weather_features" as the inference module 
             # reads bundle.metadata["weather_features"] to validate the incoming feature count
             "weather_features": FEATURES,
+            "fire_input_channels": ["is_burning"],
+            "input_channel_order": FEATURES + ["is_burning"],
             "input_steps": INPUT_STEPS,
             "horizon": HORIZON,
             "grid_shape": (grid_height, grid_width),
