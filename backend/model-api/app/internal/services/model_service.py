@@ -6,6 +6,7 @@ from .messaging_service import MessagingService
 from .geojson_service import GeoJsonService
 from ...models.geojson_model import FeatureCollection
 from ...models.fire_event import FireEvent
+from shared.tracing import start_consumer_span
 
 
 class ModelService:
@@ -28,15 +29,20 @@ class ModelService:
     
     async def consume_data_publish_prediction(self, message):
         async with message.process():
-            print("recieved fire_event data")
-            body = json.loads(message.body.decode("utf-8"))
-            fire_events: list[FireEvent] = [FireEvent.model_validate(item) for item in body]
-            # map data to FireEvent
-            # no need to send data to prediction function (prediction uses mock data)
-            # TODO: implement sending data to actual AI model
+            # Extracts aggregator-api's trace context from the "forecast"
+            # message headers, so this span (and the "predictions" message
+            # this handler goes on to publish) is part of the same trace
+            # rather than starting a new one.
+            with start_consumer_span("forecast queue consume", message.headers):
+                print("recieved fire_event data")
+                body = json.loads(message.body.decode("utf-8"))
+                fire_events: list[FireEvent] = [FireEvent.model_validate(item) for item in body]
+                # map data to FireEvent
+                # no need to send data to prediction function (prediction uses mock data)
+                # TODO: implement sending data to actual AI model
 
-            # model forms a prediction
-            prediction: FeatureCollection = self.geojson.get_geojson()
+                # model forms a prediction
+                prediction: FeatureCollection = self.geojson.get_geojson()
 
-            # send off to 'predictions' queue
-            await self.messaging.publish_prediction(prediction)
+                # send off to 'predictions' queue
+                await self.messaging.publish_prediction(prediction)

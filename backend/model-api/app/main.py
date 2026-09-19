@@ -6,6 +6,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from .routers.model_router import router as model_router
 from .internal.services.messaging_service import MessagingService
 from .internal.services.model_service import ModelService
+from .config.config import environment
+from shared.tracing import setup_tracing
 
 
 @asynccontextmanager

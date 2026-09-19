@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
+from geopy.exc import GeocoderRateLimited
 
 
 INPUT_FILE = "bushfire_at_risk_register.json"
@@ -80,11 +81,9 @@ def geocode_facilities():
 
     geocode = RateLimiter(
         geolocator.geocode,
-        min_delay_seconds=1.5,
-        max_retries=3,
-        error_wait_seconds=10,
-        swallow_exceptions=True,
-        return_value_on_exception=None
+        min_delay_seconds=2.5,
+        max_retries=0,
+        swallow_exceptions=False
     )
 
     total = len(data)
@@ -125,6 +124,19 @@ def geocode_facilities():
                     addressdetails=True,
                     timeout=10
                 )
+
+            except GeocoderRateLimited:
+                print("Nominatim rate limit reached.")
+                print("Saving current progress and stopping geocoding.")
+
+                save_json(data, OUTPUT_FILE)
+                save_cache(cache)
+
+                print(f"Progress saved to: {OUTPUT_FILE}")
+                print("Run the script again later to continue.")
+
+                return
+
             except Exception as e:
                 print(f"Failed query: {query}")
                 print(f"Error: {e}")

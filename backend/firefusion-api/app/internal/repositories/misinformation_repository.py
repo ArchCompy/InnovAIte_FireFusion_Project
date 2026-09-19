@@ -1,50 +1,65 @@
-import psycopg
-from psycopg.rows import class_row
 from typing import Optional
-from ...config.config import environment
+
+from psycopg.rows import class_row
+
+from .database import get_pool
 from ..models.misinformation_models import NarrativeClusterObject, ActiveIncidentObject, Post
+
+
+async def _fetch_all(model, query: str, params: tuple = ()) -> list:
+    """Run a SELECT expected to return zero or more rows, via the shared pool."""
+    async with get_pool().connection() as conn:
+        async with conn.cursor(row_factory=class_row(model)) as cur:
+            await cur.execute(query, params)
+            return await cur.fetchall()
+
+
+async def _fetch_one(model, query: str, params: tuple = ()):
+    """Run a SELECT expected to return at most one row, via the shared pool."""
+    async with get_pool().connection() as conn:
+        async with conn.cursor(row_factory=class_row(model)) as cur:
+            await cur.execute(query, params)
+            return await cur.fetchone()
 
 
 class MisinformationRepository:
 
-    def __init__(self):
-        self.db_url = environment.db_url
+    async def get_all_narrative_cluster_objects(self) -> list[NarrativeClusterObject]:
+        return await _fetch_all(
+            NarrativeClusterObject,
+            "SELECT * FROM narrative_cluster_objects"
+        )
 
-    def get_all_narrative_cluster_objects(self) -> list[NarrativeClusterObject]:
-        with psycopg.connect(self.db_url, row_factory=class_row(NarrativeClusterObject)) as conn:
-            return conn.execute("SELECT * FROM narrative_cluster_objects").fetchall()
+    async def get_narrative_cluster_object_by_id(self, narrative_id: str) -> Optional[NarrativeClusterObject]:
+        return await _fetch_one(
+            NarrativeClusterObject,
+            "SELECT * FROM narrative_cluster_objects WHERE narrative_id = %s",
+            (narrative_id,)
+        )
 
-    def get_narrative_cluster_object_by_id(self, narrative_id: str) -> Optional[NarrativeClusterObject]:
-        with psycopg.connect(self.db_url, row_factory=class_row(NarrativeClusterObject)) as conn:
-            return conn.execute(
-                "SELECT * FROM narrative_cluster_objects WHERE narrative_id = %s",
-                (narrative_id,)
-            ).fetchone()
+    async def get_incident_narrative_cluster_objects(self, incident_id: str) -> list[NarrativeClusterObject]:
+        return await _fetch_all(
+            NarrativeClusterObject,
+            "SELECT * FROM narrative_cluster_objects WHERE incident_id = %s",
+            (incident_id,)
+        )
 
-    def get_incident_narrative_cluster_objects(self, incident_id: str) -> list[NarrativeClusterObject]:
-        with psycopg.connect(self.db_url, row_factory=class_row(NarrativeClusterObject)) as conn:
-            return conn.execute(
-                "SELECT * FROM narrative_cluster_objects WHERE incident_id = %s",
-                (incident_id,)
-            ).fetchall()
+    async def get_all_posts(self) -> list[Post]:
+        return await _fetch_all(Post, "SELECT * FROM posts")
 
-    def get_all_posts(self) -> list[Post]:
-        with psycopg.connect(self.db_url, row_factory=class_row(Post)) as conn:
-            return conn.execute("SELECT * FROM posts").fetchall()
+    async def get_post_by_id(self, post_id: str) -> Optional[Post]:
+        return await _fetch_one(
+            Post,
+            "SELECT * FROM posts WHERE id = %s",
+            (post_id,)
+        )
 
-    def get_post_by_id(self, post_id: str) -> Optional[Post]:
-        with psycopg.connect(self.db_url, row_factory=class_row(Post)) as conn:
-            return conn.execute(
-                "SELECT * FROM posts WHERE id = %s",(post_id,)
-            ).fetchone()
+    async def get_all_active_incidents(self) -> list[ActiveIncidentObject]:
+        return await _fetch_all(ActiveIncidentObject, "SELECT * FROM active_incident_objects")
 
-    def get_all_active_incidents(self) -> list[ActiveIncidentObject]:
-
-        with psycopg.connect(self.db_url, row_factory=class_row(ActiveIncidentObject)) as conn:
-            return conn.execute("SELECT * FROM active_incident_objects").fetchall()
-
-    def get_active_incident_by_id(self, incident_id: str) -> Optional[ActiveIncidentObject]:
-        with psycopg.connect(self.db_url, row_factory=class_row(ActiveIncidentObject)) as conn:
-            return conn.execute(
-                "SELECT * FROM active_incident_objects WHERE incident_id = %s",(incident_id,)
-            ).fetchone()
+    async def get_active_incident_by_id(self, incident_id: str) -> Optional[ActiveIncidentObject]:
+        return await _fetch_one(
+            ActiveIncidentObject,
+            "SELECT * FROM active_incident_objects WHERE incident_id = %s",
+            (incident_id,)
+        )

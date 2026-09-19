@@ -43,9 +43,21 @@ app = FastAPI(
     lifespan=init_lifespan_objects,
 )
 
+setup_tracing(
+    app,
+    environment.otel_service_name,
+    enabled=environment.otel_traces_enabled,
+    otlp_endpoint=environment.otel_exporter_otlp_endpoint,
+    instrument_db=True,
+    instrument_cache=True,
+)
+
+# Restricted to the configured dashboard origins. A wildcard origin combined
+# with allow_credentials is rejected by browsers and is unsafe once deployed,
+# so the permitted origins are configured per environment.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=environment.allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

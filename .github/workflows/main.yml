@@ -5,7 +5,6 @@ on:
     branches: [main, develop]
 
   pull_request:
-    branches: [main, develop]
 
 permissions:
   contents: read
@@ -97,8 +96,58 @@ jobs:
       - name: Install backend test dependencies
         run: pip install -r backend/tests/requirements-test.txt
 
-      - name: Run backend tests
-        run: pytest backend/tests
+      - name: Seed a sample prediction so the live-feature checks have data
+        working-directory: backend
+        run: |
+          # Without a cached prediction the endpoint correctly returns an empty
+          # FeatureCollection, and the per-feature contract checks have nothing to
+          # validate. Seeding a known-good payload makes those checks meaningful.
+          python3 - <<'PY' > /tmp/prediction.json
+          import json
+          print(json.dumps({
+              "type": "FeatureCollection",
+              "features": [{
+                  "type": "Feature",
+                  "geometry": {
+                      "type": "Polygon",
+                      "coordinates": [[
+                          [142.1560, -37.5600], [142.3200, -37.7400],
+                          [142.5100, -37.6500], [142.3800, -37.5100],
+                          [142.1560, -37.5600]
+                      ]]
+                  },
+                  "properties": {"risk_factor": 2, "fire_probability": 0.78}
+              }]
+          }))
+          PY
+          docker compose exec -T cache redis-cli -x SET predictions < /tmp/prediction.json
+          echo "seeded prediction into the cache"
+
+      - name: Run backend unit tests
+        run: pytest backend/tests -m "not integration"
+
+      - name: Run backend integration and contract tests
+        run: pytest backend/tests -m integration
+
+      - name: Verify the Fire Risk Map contract tests actually ran
+        run: |
+          # Integration tests skip when a service is unreachable. A silent skip
+          # would let broken integration work merge, so fail the job instead.
+          # An empty forecast is a valid contract response, so only an
+          # unreachable stack is treated as a failure here.
+          pytest backend/tests/test_fire_risk_map_contract.py -q -rs > contract.log 2>&1 || true
+          cat contract.log
+          if grep -q "not reachable" contract.log; then
+            echo "::error::Fire Risk Map contract tests skipped - the backend stack was not reachable."
+            exit 1
+          fi
+          if ! grep -qE "[0-9]+ passed" contract.log; then
+            echo "::error::Fire Risk Map contract tests did not pass."
+            exit 1
+          fi
+          if grep -q "no features to validate" contract.log; then
+            echo "::warning::The forecast was empty, so the per-feature contract checks did not run."
+          fi
 
       - name: Dump container logs on failure
         if: failure()
@@ -124,14 +173,17 @@ jobs:
       fail-fast: false
 
       matrix:
+        # The build context is backend/ (not each service directory) because
+        # every image also COPYs the top-level shared/ package. Each
+        # Dockerfile's COPY paths are relative to backend/.
         include:
           - service: firefusion-api
-            context: ./backend/firefusion-api
+            context: ./backend
             dockerfile: ./backend/firefusion-api/Dockerfile
             image: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/firefusion-api
 
           - service: aggregator-api
-            context: ./backend/aggregator-api
+            context: ./backend
             dockerfile: ./backend/aggregator-api/Dockerfile
             image: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/aggregator-api
 

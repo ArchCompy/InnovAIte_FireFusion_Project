@@ -11,6 +11,7 @@ __pycache__/
 # Virtual environments
 firefusion_env/
 venv/
+.venv/
 .env
 
 # OS metadata
