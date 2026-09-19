@@ -52,6 +52,10 @@ def forecast_module(monkeypatch):
         sys.path.insert(0, str(APP_DIR))
 
     monkeypatch.setenv("CACHE_URL", "redis://localhost:6379")
+    # forecast_service reads forecast_stale_after_seconds from config.config,
+    # whose Environment requires these even though this module doesn't use them.
+    monkeypatch.setenv("DB_URL", "postgresql://localhost/unused")
+    monkeypatch.setenv("BROKER_URL", "amqp://localhost/unused")
 
     from app.internal.services import forecast_service as fs
 
@@ -96,7 +100,11 @@ async def test_returns_empty_feature_collection_when_no_data(service):
 
     result = await svc.fetch_predictions()
 
-    assert result == EMPTY_FEATURE_COLLECTION
+    # Freshness meta is additive (see test_graceful_degradation.py); the
+    # type/features contract is unchanged, and no forecast is "unavailable".
+    assert result["type"] == EMPTY_FEATURE_COLLECTION["type"]
+    assert result["features"] == EMPTY_FEATURE_COLLECTION["features"]
+    assert result["meta"]["status"] == "unavailable"
     cache.get.assert_awaited_once_with("predictions")
 
 
@@ -185,13 +193,23 @@ async def test_store_prediction_caches_and_broadcasts_validated_payload(
 
     result = await svc.store_prediction(deepcopy(VALID_PAYLOAD))
 
-    cache.set.assert_awaited_once()
-    cache_key, cached_json = cache.set.await_args.args
+    # Two writes: the forecast itself, then predictions:generated_at.
+    assert cache.set.await_count == 2
+    (cache_key, cached_json), _ = cache.set.await_args_list[0]
+    (timestamp_key, _generated_at), _ = cache.set.await_args_list[1]
 
     assert cache_key == "predictions"
+    assert timestamp_key == "predictions:generated_at"
     assert json.loads(cached_json) == result
-    websocket.broadcast.assert_awaited_once_with(result)
     assert result == VALID_PAYLOAD
+
+    # The push carries the same payload plus live freshness meta, so the
+    # WebSocket and REST channels share one shape.
+    websocket.broadcast.assert_awaited_once()
+    broadcast = websocket.broadcast.await_args.args[0]
+    assert broadcast["meta"]["status"] == "live"
+    assert broadcast["meta"]["age_seconds"] == 0
+    assert {k: v for k, v in broadcast.items() if k != "meta"} == result
 
 
 @pytest.mark.asyncio

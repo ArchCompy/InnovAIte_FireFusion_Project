@@ -24,6 +24,13 @@ TEST_CACHE_URL = os.getenv(
 
 PREDICTION_CACHE_KEY = "predictions"
 
+# forecast_service reads freshness settings from config.config, whose
+# Environment requires these even for tests that never touch the database or
+# broker. Unit tests import the service without a running stack, so provide
+# inert defaults (real values, if already set, win).
+os.environ.setdefault("DB_URL", "postgresql://localhost/unused")
+os.environ.setdefault("BROKER_URL", "amqp://localhost/unused")
+
 
 def pytest_configure(config):
     config.addinivalue_line(

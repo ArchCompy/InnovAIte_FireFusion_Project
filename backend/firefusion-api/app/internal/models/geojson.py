@@ -8,6 +8,8 @@ from pydantic import (
     field_validator,
 )
 
+from .forecast_status import ForecastMeta
+
 Coordinate = StrictInt | StrictFloat
 
 Position = Annotated[
@@ -89,3 +91,9 @@ class Feature(BaseModel):
 class FeatureCollection(BaseModel):
     type: Literal["FeatureCollection"]
     features: list[Feature]
+
+    # Freshness of the served forecast. Optional and additive so existing
+    # Front-end clients reading only type/features are unaffected; omitted
+    # entirely from the response when unset (see model_dump(exclude_none=True)
+    # call sites in forecast_service.py).
+    meta: ForecastMeta | None = None

@@ -166,7 +166,11 @@ def test_missing_cache_returns_empty_feature_collection(
     response = http.get(f"{ff}{ENDPOINT}")
 
     assert response.status_code == 200
-    assert response.json() == EMPTY_FEATURE_COLLECTION
+    body = response.json()
+    assert body["type"] == EMPTY_FEATURE_COLLECTION["type"]
+    assert body["features"] == EMPTY_FEATURE_COLLECTION["features"]
+    # Additive freshness meta: nothing has ever been received.
+    assert body["meta"]["status"] == "unavailable"
 
 
 def test_valid_cached_prediction_is_served_over_http(
@@ -189,7 +193,11 @@ def test_valid_cached_prediction_is_served_over_http(
     )
 
     body = response.json()
-    assert body == VALID_PAYLOAD
+    assert body["type"] == VALID_PAYLOAD["type"]
+    assert body["features"] == VALID_PAYLOAD["features"]
+    # Written straight to Redis with no predictions:generated_at, so its age
+    # is unknown, which must never be reported as live.
+    assert body["meta"]["status"] == "stale"
 
     for index, feature in enumerate(body["features"]):
         validate_feature(feature, index)

@@ -126,7 +126,9 @@ def test_accepts_empty_feature_collection():
 
     result = FeatureCollection.model_validate(payload)
 
-    assert result.model_dump() == payload
+    # meta (freshness) is optional and omitted when unset, so existing
+    # clients reading only type/features see no change.
+    assert result.model_dump(exclude_none=True) == payload
 
 
 def test_rejects_wrong_feature_collection_type(valid_payload):

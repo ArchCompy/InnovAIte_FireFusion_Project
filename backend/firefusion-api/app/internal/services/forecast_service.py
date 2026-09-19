@@ -1,14 +1,19 @@
 import json
 import logging
+from datetime import datetime, timezone
 
 from pydantic import ValidationError
 
 from .caching_service import cache_client
 from .websocket_connection_manager import ws_manager
+from ...config.config import environment
 from ..models.geojson import FeatureCollection
+from ..models.forecast_status import ForecastMeta, ForecastStatus
 
 
 logger = logging.getLogger(__name__)
+
+GENERATED_AT_KEY = "predictions:generated_at"
 
 
 class ForecastCacheCorruptionError(RuntimeError):
@@ -24,6 +29,95 @@ def _empty():
         "type": "FeatureCollection",
         "features": []
     }
+
+
+def _now_iso() -> str:
+    """Current UTC time as an ISO 8601 string, e.g. 2026-01-01T12:00:00+00:00."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _with_meta(feature_collection: dict, meta: ForecastMeta) -> dict:
+    """Attach freshness metadata to a FeatureCollection dict.
+
+    exclude_none so a field the Front-end can't act on (an unknown
+    generated_at or age) is omitted rather than sent as null.
+    """
+    feature_collection["meta"] = meta.model_dump(exclude_none=True)
+    return feature_collection
+
+
+def _unavailable_meta() -> ForecastMeta:
+    return ForecastMeta(
+        status=ForecastStatus.UNAVAILABLE,
+        stale_after_seconds=environment.forecast_stale_after_seconds,
+        message="No forecast is available yet.",
+    )
+
+
+def _classify_freshness(generated_at_raw) -> ForecastMeta:
+    """Classify a stored forecast's freshness against the configured window.
+
+    Overstating freshness is the dangerous error for an emergency tool, so
+    any timestamp we cannot trust (missing, or unparsable) is reported as
+    stale rather than live. Age is never guessed: unknown means unknown.
+    """
+    stale_after = environment.forecast_stale_after_seconds
+
+    if not generated_at_raw:
+        return ForecastMeta(
+            status=ForecastStatus.STALE,
+            stale_after_seconds=stale_after,
+            message=(
+                "Forecast age is unknown, so it is being treated as stale. "
+                "The map still shows the last known risk picture."
+            ),
+        )
+
+    # redis-py returns bytes unless decode_responses is set on the client
+    # (it isn't, see caching_service.py), while json.loads tolerates bytes
+    # transparently. datetime.fromisoformat does not, so decode explicitly.
+    if isinstance(generated_at_raw, bytes):
+        generated_at_raw = generated_at_raw.decode()
+
+    try:
+        generated_at = datetime.fromisoformat(generated_at_raw)
+    except ValueError:
+        logger.warning(
+            "predictions:generated_at was not a valid ISO timestamp: %r",
+            generated_at_raw,
+        )
+        return ForecastMeta(
+            status=ForecastStatus.STALE,
+            stale_after_seconds=stale_after,
+            message=(
+                "Forecast age is unknown, so it is being treated as stale. "
+                "The map still shows the last known risk picture."
+            ),
+        )
+
+    if generated_at.tzinfo is None:
+        generated_at = generated_at.replace(tzinfo=timezone.utc)
+
+    age_seconds = max(0, int((datetime.now(timezone.utc) - generated_at).total_seconds()))
+
+    if age_seconds <= stale_after:
+        return ForecastMeta(
+            status=ForecastStatus.LIVE,
+            generated_at=generated_at_raw,
+            age_seconds=age_seconds,
+            stale_after_seconds=stale_after,
+        )
+
+    return ForecastMeta(
+        status=ForecastStatus.STALE,
+        generated_at=generated_at_raw,
+        age_seconds=age_seconds,
+        stale_after_seconds=stale_after,
+        message=(
+            f"This forecast is {age_seconds}s old and the prediction source "
+            "has stopped updating. The map still shows the last known risk picture."
+        ),
+    )
 
 
 class ForecastService:
@@ -43,12 +137,27 @@ class ForecastService:
         # WebSocket and REST representations remain consistent.
         validated_payload = geojson.model_dump(exclude_none=True)
 
+        generated_at = _now_iso()
+
         await cache_client.set(
             "predictions",
             json.dumps(validated_payload)
         )
+        await cache_client.set(GENERATED_AT_KEY, generated_at)
 
-        await ws_manager.broadcast(validated_payload)
+        # A freshly stored prediction is live by definition, age 0. Attaching
+        # the same meta shape here means the WebSocket push and the REST
+        # response in fetch_predictions are never structurally different.
+        broadcast_payload = _with_meta(
+            dict(validated_payload),
+            ForecastMeta(
+                status=ForecastStatus.LIVE,
+                generated_at=generated_at,
+                age_seconds=0,
+                stale_after_seconds=environment.forecast_stale_after_seconds,
+            ),
+        )
+        await ws_manager.broadcast(broadcast_payload)
 
         return validated_payload
 
@@ -66,9 +175,14 @@ class ForecastService:
         """Return the latest forecast as a GeoJSON FeatureCollection.
 
         A missing Redis value represents the normal no-prediction state and
-        returns an empty FeatureCollection. A present but unusable value is
-        reported as cache corruption so the API does not disguise damaged
-        prediction data as a normal no-data response.
+        returns an empty FeatureCollection tagged unavailable. A present but
+        unusable value is reported as cache corruption so the API does not
+        disguise damaged prediction data as a normal no-data response.
+
+        The last known good forecast keeps being served past its freshness
+        window, tagged stale, rather than being dropped: during an incident a
+        stale risk picture is more useful than a blank map. See
+        docs/fire-risk-map-graceful-degradation.md.
 
         Redis dependency failures propagate to the router unchanged.
         """
@@ -80,7 +194,7 @@ class ForecastService:
                 "No cached prediction available; "
                 "returning empty FeatureCollection"
             )
-            return _empty()
+            return _with_meta(_empty(), _unavailable_meta())
 
         try:
             payload = json.loads(data)
@@ -96,7 +210,7 @@ class ForecastService:
             )
 
         try:
-            return FeatureCollection(**payload).model_dump(
+            feature_collection = FeatureCollection(**payload).model_dump(
                 exclude_none=True
             )
         except ValidationError as exc:
@@ -104,3 +218,12 @@ class ForecastService:
                 "Cached prediction did not match the GeoJSON schema"
             ) from exc
 
+        generated_at_raw = await cache_client.get(GENERATED_AT_KEY)
+        meta = _classify_freshness(generated_at_raw)
+
+        if meta.status == ForecastStatus.STALE:
+            logger.warning(
+                "Serving stale forecast (age_seconds=%s)", meta.age_seconds
+            )
+
+        return _with_meta(feature_collection, meta)
