@@ -5,6 +5,7 @@ Routers call this after resolving model_id via model_loader.
 from typing import Any, Optional, Tuple
 import numpy as np
 import torch
+from datetime import datetime, timedelta
 
 from api.schemas.bushfire import ForecastRequest, ForecastResponse, GeoFeatureOut, ForecastPropertiesOut, DEFAULT_FEATURE_NAMES, RISK_LEVEL_LABELS, prob_to_risk_level
 from api.model_loader import LoadedModel
@@ -53,14 +54,29 @@ def predict_bushfire_forecast(geojson_dict: dict, bundle: LoadedModel) -> dict:
             "geometry": feature.geometry,
             "grid_row": feature.properties.__dict__.get("grid_row"),
             "grid_col": feature.properties.__dict__.get("grid_col"),
+            "timestamps": feature.properties.timestamps,
         })
 
-    expected_features = bundle.metadata.get("weather_features", DEFAULT_FEATURE_NAMES)
+    expected_channels = bundle.metadata.get(
+        "input_channel_order",
+        bundle.metadata.get("weather_features", DEFAULT_FEATURE_NAMES),
+    )
+    weather_features = bundle.metadata.get("weather_features", DEFAULT_FEATURE_NAMES)
+    n_weather = len(weather_features)
+
+    if request.feature_names is not None:
+        if request.feature_names != expected_channels:
+            raise ValueError(
+                f"feature_names mismatch: request provided {request.feature_names}, "
+                f"but model {bundle.model_id!r} expects {expected_channels} (order-sensitive)."
+            )
+
     if observations_list:
         n_features = observations_list[0].shape[1]
-        if n_features != len(expected_features):
+        if n_features != len(expected_channels):
             raise ValueError(
-                f"Expected {len(expected_features)} weather features ({expected_features}), but received observations with {n_features} columns."
+                f"Expected {len(expected_channels)} input channels {expected_channels}, "
+                f"but received observations with {n_features} columns."
             )
     
     # Determine if request provided grid coordinates
@@ -75,7 +91,7 @@ def predict_bushfire_forecast(geojson_dict: dict, bundle: LoadedModel) -> dict:
     
     # Apply scaler if available
     if bundle.scaler is not None:
-        x_input = _apply_scaler(x_input, bundle.scaler)
+        x_input = _apply_scaler(x_input, bundle.scaler, n_weather)
     
     # Convert to tensor and move to device
     x_tensor = torch.from_numpy(x_input).float().to(bundle.device)
@@ -144,29 +160,42 @@ def _build_grid_tensor(
     return grid[np.newaxis, ...]  # [1, seq_len, height, width, n_features]
 
 
-def _apply_scaler(x: np.ndarray, scaler: Any) -> np.ndarray:
+def _apply_scaler(x: np.ndarray, scaler: Any, n_weather: int) -> np.ndarray:
     """
-    Apply scaler to input tensor, handling both gridded and batch shapes.
-    
+    Apply scaler to the weather channels only, leaving the trailing
+    is_burning channel untouched. Handles both gridded and batch shapes.
+
     Args:
-        x: Input array (gridded or batch)
-        scaler: Fitted sklearn scaler
-    
+        x: Input array (gridded or batch), last axis = [weather..., is_burning]
+        scaler: Fitted sklearn scaler, fit on weather columns only
+        n_weather: Number of weather feature channels
+
     Returns:
-        Scaled array with same shape
+        Array with same shape; weather channels scaled, fire channel raw
     """
     original_shape = x.shape
-    n_features = original_shape[-1]
-    
-    # Flatten all dimensions except features
-    x_flat = x.reshape(-1, n_features)
-    
-    # Apply scaler
-    x_scaled = scaler.transform(x_flat)
-    x_scaled[np.isnan(x_scaled)] = 0.0
-    
-    # Reshape back
-    return x_scaled.reshape(original_shape)
+
+    weather = x[..., :n_weather]
+    fire_state = x[..., n_weather:]
+
+    weather_flat = weather.reshape(-1, n_weather)
+    weather_scaled = scaler.transform(weather_flat)
+    weather_scaled[np.isnan(weather_scaled)] = 0.0
+    weather_scaled = weather_scaled.reshape(original_shape[:-1] + (n_weather,))
+
+    fire_state = np.nan_to_num(fire_state, nan=0.0)
+
+    return np.concatenate([weather_scaled, fire_state], axis=-1)
+
+def _compute_forecast_timestamps(timestamps: Optional[list[datetime]], horizon: int, step_hours: float = 12.0) -> Optional[list[datetime]]:
+    """
+    Project `horizon` future timestamps from the last observed timestamp
+    """
+    if not timestamps:
+        return None
+    step = timedelta(hours=step_hours)
+    last = timestamps[-1]
+    return [last + step * (i + 1) for i in range(horizon)]
 
 
 def _compute_risk_fields(cell_probs: list[float]) -> dict:
@@ -226,11 +255,13 @@ def _postprocess_forecasts(
                 cell_probs = probs[0, :, row, col, 0].tolist()
                 risk_score = float(np.mean(cell_probs))
                 is_burning_predicted = [p > fire_threshold for p in cell_probs]
+                forecast_timestamps = _compute_forecast_timestamps(meta.get("timestamps"), horizon)
                 
                 props_out = ForecastPropertiesOut(
                     id=meta["id"],
                     fire_probability=cell_probs,
                     forecast=[[p] for p in cell_probs],
+                    forecast_timestamps=forecast_timestamps,
                     risk_score=risk_score,
                     is_burning_predicted=is_burning_predicted,
                     fire_threshold=fire_threshold,
@@ -253,11 +284,13 @@ def _postprocess_forecasts(
             cell_probs = probs[i, :, 0].tolist()
             risk_score = float(np.mean(cell_probs))
             is_burning_predicted = [p > fire_threshold for p in cell_probs]
+            forecast_timestamps = _compute_forecast_timestamps(meta.get("timestamps"), horizon)
             
             props_out = ForecastPropertiesOut(
                 id=meta["id"],
                 fire_probability=cell_probs,
                 forecast=[[p] for p in cell_probs],
+                forecast_timestamps=forecast_timestamps,
                 risk_score=risk_score,
                 is_burning_predicted=is_burning_predicted,
                 fire_threshold=fire_threshold,

@@ -15,14 +15,34 @@
 
 The **AI Modelling API** is a FastAPI-based REST service that exposes machine learning models for:
 - **Misinformation Detection**: Binary classification of social media posts using DeBERTa v3-large
-- **Bushfire Fire Prediction**: Spatiotemporal fire-occurrence probability per grid cell using a single ConvLSTM (5-D in, 5-D out)
+- **Bushfire Fire Prediction**: Spatiotemporal fire-occurrence probability per grid cell using a single ConvLSTM (5-D in, 5-D out), taking **8 input channels — 7 ERA5 weather + `is_burning`**
 - **Bushfire Risk Classification (deprecated)**: TCN classifier, retired by the single-ConvLSTM refactor
 
 The API uses a **YAML-driven model registry** to manage checkpoints, scalers, and metadata, enabling easy addition of new models without code changes.
 
+> ### Bushfire forecast contract — read this first
+>
+> The deployed ConvLSTM takes **8 input channels, not 7**: the 7 ERA5 weather variables plus
+> `is_burning`, the observed fire state, last in the channel order. `is_burning` is a **required
+> input** sourced from live satellite fire detections — the endpoint cannot be called without it.
+>
+> | | Value |
+> |---|---|
+> | Input channels | **8** (`input_channel_order`, order-sensitive) |
+> | Input steps | **30** |
+> | Horizon | **1** |
+> | `grid_shape` | **(142, 200)** |
+> | `fire_threshold` | **0.6183173060417175** |
+>
+> A 7-channel request is rejected. See [Channel order](#bushfire-fire-prediction) for the full
+> list, the `is_burning` rules, and the known gap around `grid_row` / `grid_col` derivation.
+>
+> Earlier revisions of this file documented 7 channels, `input_steps = 60` and
+> `fire_threshold = 0.5`. Those figures were stale and should not be used.
+
 **Key Design Principles:**
 - Separation of concerns (routers, inference, schemas, config)
-- Stateless, pure inference functions
+- Stateless, pure inference functions (**no database access in this service** — data retrieval is Backend's responsibility)
 - GeoJSON-based I/O for spatial data
 - Pydantic validation at API boundaries
 
@@ -49,16 +69,9 @@ api/
 │   ├── bushfire_forecaster.py       # ConvLSTM forecasting adapter
 │   └── bushfire_classifier.py       # TCN classification adapter (deprecated)
 │
-├── schemas/
-│   ├── bushfire.py                  # GeoJSON timeseries Pydantic schemas
-│   └── misinformation.py            # Social post input/output schemas
-│
-├── examples/
-│   ├── bushfire_input.geojson       # Sample forecast input (60 timesteps × 7 features)
-│   └── misinfo_test.json            # Sample misinfo post
-│
-└── utils/
-    └── geojson.py                   # Placeholder for geo utilities (empty)
+└── schemas/
+    ├── bushfire.py                  # GeoJSON timeseries Pydantic schemas
+    └── misinformation.py            # Social post input/output schemas
 ```
 
 ## File Directory & Purpose
@@ -75,9 +88,6 @@ api/
 | `inference/bushfire_classifier.py` | Module | TCN risk classification & orchestration — **deprecated** by the single-ConvLSTM refactor |
 | `schemas/bushfire.py` | Module | Pydantic models for GeoJSON I/O validation |
 | `schemas/misinformation.py` | Module | Pydantic models for post input/output |
-| `examples/bushfire_input.geojson` | Data | Example forecast input payload |
-| `examples/misinfo_test.json` | Data | Example misinfo post payload |
-| `utils/geojson.py` | Module | Geo utilities (placeholder, empty) | ⏳ Future |
 
 ## Architecture & Data Flow
 
@@ -100,7 +110,7 @@ api/
 4. bushfire_forecaster.py:predict_bushfire_forecast():
    - Validates GeoJSON structure
    - Extracts observations (timeseries per Feature)
-   - Pads/truncates to input_steps (default 60)
+   - Pads/truncates to input_steps (30 for the deployed checkpoint)
    - Builds gridded or batch tensor
    - Applies scaler
    - Runs bundle.model.predict() -> 5-D fire probability grid
@@ -255,8 +265,8 @@ Predict fire-occurrence probability per grid cell for the next timestep (`horizo
         "grid_row": 3,
         "grid_col": 7,
         "observations": [
-          [20.5, 15.2, 100.3, 50.1, 22.1, 2.5, 1.3],
-          [21.0, 15.5, 105.2, 52.0, 23.0, 2.4, 1.2],
+          [20.5, 8.1, 0.0002, 1.4, -0.7, 10240000.0, 21.8, 0.0],
+          [21.0, 8.4, 0.0000, 1.2, -0.9, 10510000.0, 22.3, 1.0],
           ...
         ]
       }
@@ -269,13 +279,112 @@ Predict fire-occurrence probability per grid cell for the next timestep (`horizo
 
 | Property | Required | Description |
 |---|---|---|
-| `observations` | yes | `[seq_len, n_features]` array (e.g. 60 timesteps × 7 features). Padded/truncated to the checkpoint's `input_steps`. |
+| `observations` | yes | `[seq_len, n_channels]` array. For the deployed checkpoint: **30 timesteps × 8 channels**. Padded/truncated to the checkpoint's `input_steps`. |
 | `id` | no | Cell identifier, echoed in the response and used to join forecaster → classifier output. |
 | `timestamps` | no | ISO-8601 timestamps, must be the same length as `observations`. |
-| `grid_row`, `grid_col` | no | Position of the cell in the model grid. Must be supplied **together**. |
+| `grid_row`, `grid_col` | no | Position of the cell in the model grid. Must be supplied **together**. Strongly recommended — see *Gridded vs batched input*. |
 
-**Channel order** (`feature_names`, defaults to `DEFAULT_FEATURE_NAMES`):
-`[skin_temperature_c, soil_temperature_level_1_c, surface_solar_radiation_downwards, surface_thermal_radiation_downwards, temperature_2m_c, u_component_of_wind_10m, v_component_of_wind_10m]`
+**Channel order — 8 channels, order-sensitive.** The authoritative list is
+`input_channel_order` in the checkpoint's scaler bundle, which the adapter prefers over
+`DEFAULT_FEATURE_NAMES`. For the deployed `convlstm_forecaster.pth`:
+
+| # | Channel | Unit | Scaled? |
+|---|---|---|---|
+| 0 | `era5land_temperature_2m_c` | °C | yes |
+| 1 | `era5_dewpoint_temperature_2m_c` | °C | yes |
+| 2 | `era5_total_precipitation` | m | yes |
+| 3 | `era5_u_component_of_wind_10m` | m/s (eastward) | yes |
+| 4 | `era5_v_component_of_wind_10m` | m/s (northward) | yes |
+| 5 | `era5land_surface_solar_radiation_downwards` | J/m² | yes |
+| 6 | `era5land_skin_temperature_c` | °C | yes |
+| 7 | `is_burning` | binary `0.0` / `1.0` | **no** |
+
+Channels 0–6 are ERA5 weather and are standardised by the bundled `StandardScaler`
+(`n_features_in_ = 7`). Channel 7 is passed through **unscaled** —
+`_apply_scaler()` deliberately scales the weather channels only.
+
+If `feature_names` is supplied in the request it must equal this list exactly, including order.
+
+### Channel 7 — `is_burning`
+
+This is the **observed fire state**, not a prediction, and it is a **required input**. The model
+was trained with past fire footprint concatenated onto the weather channels
+(`ts_convlstm_forecaster_train.py`: `np.concatenate([train_scaled, train_labels], axis=-1)`,
+`input_channels = n_features + 1`), so it answers *"given 30 timesteps of weather **and** where
+fire was burning, where will fire be next?"*
+
+Rules for callers:
+
+- Supply `is_burning` for **every one of the 30 historical timesteps**, per cell.
+- **Absence of a detection means `0.0`, not missing data.** Most cells at most timesteps have no
+  fire; the training label grid was built as `np.zeros(...)` with only detected cells set to
+  `1.0`. Do not reject or null-fill a row because no fire was recorded for it.
+- Do **not** substitute an all-zero channel when the fire source is unavailable. That is a
+  confident assertion that nothing is burning anywhere, and the model will forecast accordingly.
+  Fail the request instead.
+- Source: live satellite fire detections (NASA FIRMS active hotspots), which are the live
+  equivalent of the `satellite_detections_within_fires.csv` training labels. Human-reported
+  incident feeds and planned burns are a different distribution and must not be mixed in.
+
+### Deployed checkpoint parameters
+
+Read from `convlstm_scaler.pkl` / `convlstm_forecaster.pth`. Callers should read these from the
+`/predict/models` metadata rather than hard-coding them.
+
+| Parameter | Value |
+|---|---|
+| `input_channel_order` | the 8 channels above |
+| `input_steps` | `30` |
+| `horizon` | `1` |
+| `grid_shape` | `(142, 200)` — (height, width) = (rows, cols) |
+| `fire_threshold` | `0.6183173060417175` |
+
+### Grid indexing — `grid_row` / `grid_col`
+
+`grid_row` and `grid_col` are indices into the model's grid, **not** a lat/lon and not a
+Data Engineering `location_id`. They are defined by the training data's own axes
+(`load_and_format_gridded_data`):
+
+```python
+unique_lats = sorted(df['lat'].unique())   # grid_row  — row 0 is southernmost
+unique_lons = sorted(df['lon'].unique())   # grid_col  — col 0 is westernmost
+```
+
+so `grid_row` counts north from the southern edge and `grid_col` counts east from the western
+edge, both zero-indexed, bounded by `grid_shape`.
+
+**Do not derive these indices yourself.** This grid is *not* `location_id` and *not* the
+`victoria_grid_5000m` / EPSG:7899 grid from `gridGeneration.py`. Any other definition offsets
+every cell.
+
+The bundle ships `grid_shape` but not the axes, so AI Modelling publishes them alongside the
+checkpoint:
+
+```text
+src/models/bushfire/checkpoints/convlstm_grid_axes.npz
+    lats  float64[142]  ascending  -> index is grid_row
+    lons  float64[200]  ascending  -> index is grid_col
+```
+
+Each value is the **south-west corner** of its cell. To map a coordinate:
+
+```python
+axes = np.load("convlstm_grid_axes.npz")
+lats, lons = axes["lats"], axes["lons"]
+
+def to_cell(lat, lon):
+    """(grid_row, grid_col), or None if outside the grid."""
+    row = int(np.searchsorted(lats, lat, side="right")) - 1
+    col = int(np.searchsorted(lons, lon, side="right")) - 1
+    if not (0 <= row < len(lats) and 0 <= col < len(lons)):
+        return None
+    return row, col
+```
+
+Return `None`, never clamp — a coordinate outside the grid must be dropped.
+
+**Timesteps: 12-hourly buckets at 00:00 and 12:00 UTC**, oldest first, no gaps. This matches the
+training convention (`date + daynight * 12h`).
 
 **Gridded vs batched input:** the ConvLSTM is spatiotemporal — it expects
 `[batch, seq_len, height, width, n_features]`. When every cell carries `grid_row`/`grid_col`
@@ -301,7 +410,7 @@ supplied are filled with the training mean (0 after scaling), matching
         "id": "cell-001",
         "fire_probability": [0.85],
         "is_burning_predicted": [true],
-        "fire_threshold": 0.5,
+        "fire_threshold": 0.6183173060417175,
         "risk_score": 0.85,
         "risk_levels": [4],
         "risk_labels": ["HIGH"],
@@ -333,6 +442,124 @@ supplied are filled with the training mean (0 after scaling), matching
 
 All per-horizon-step fields (`fire_probability`, `is_burning_predicted`, `risk_levels`,
 `risk_labels`, `forecast`) are validated to have the same length.
+
+---
+
+### Integration guide — building a forecast request
+
+For the Backend caller:
+
+1. **Read the parameters, don't hard-code them.** `GET /predict/models` gives
+   `input_channel_order`, `input_steps`, `horizon`, `grid_shape`.
+2. **Map coordinates** to `(grid_row, grid_col)` with `to_cell()` above. Drop `None`.
+3. **Build 30 timesteps**, 12-hourly, oldest first. Skip cells with incomplete history — don't pad.
+4. **Channels 0–6: raw ERA5 units, unscaled.** The service applies the bundled scaler itself;
+   pre-scaling silently corrupts every input. A missing weather value rejects that cell.
+5. **Channel 7: `is_burning`** — `1.0` if a fire detection falls in that cell and bucket, else
+   `0.0`. **No detection means `0.0`, not missing.** Never send an all-zero channel as a
+   stand-in when the fire source is down — fail the request instead.
+6. **One request for all cells.** The ConvLSTM is spatiotemporal; one cell per request collapses
+   it to a 1×1 grid and throws away the spatial context. Omitted cells get the training mean.
+7. **Pass `risk_factor` straight to Front-end** — it is already 1 = extreme … 5 = very low.
+
+#### Request
+
+Abbreviated in the middle; a real request carries all 30 rows per cell and every cell.
+
+```json
+{
+  "type": "FeatureCollection",
+  "feature_names": [
+    "era5land_temperature_2m_c",
+    "era5_dewpoint_temperature_2m_c",
+    "era5_total_precipitation",
+    "era5_u_component_of_wind_10m",
+    "era5_v_component_of_wind_10m",
+    "era5land_surface_solar_radiation_downwards",
+    "era5land_skin_temperature_c",
+    "is_burning"
+  ],
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [148.20, -37.55] },
+      "properties": {
+        "id": "88_145",
+        "grid_row": 88,
+        "grid_col": 145,
+        "timestamps": ["2026-08-20T00:00:00Z", "2026-08-20T12:00:00Z", "2026-09-03T12:00:00Z"],
+        "observations": [
+          [13.4, 7.2, 0.00021, 0.8, -0.1,  9840000.0, 13.9, 0.0],
+          [21.7, 8.6, 0.00000, 1.9, -1.2, 14300000.0, 24.1, 0.0],
+          [23.8, 6.1, 0.00000, 3.4, -2.7, 15100000.0, 27.6, 1.0]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [142.45, -37.25] },
+      "properties": {
+        "id": "94_57",
+        "grid_row": 94,
+        "grid_col": 57,
+        "timestamps": ["2026-08-20T00:00:00Z", "2026-09-03T12:00:00Z"],
+        "observations": [
+          [11.8, 6.9, 0.00112, -0.6, 1.1,  8730000.0, 12.2, 0.0],
+          [19.2, 9.8, 0.00004,  1.1, 0.7, 12900000.0, 20.4, 0.0]
+        ]
+      }
+    }
+  ]
+}
+```
+
+- 8 values per row, `is_burning` last. `feature_names` must equal `input_channel_order` exactly.
+- Cell `88_145` has fire in its latest bucket (`1.0`); `94_57` has none. Both valid.
+- `timestamps` same length as `observations`. `id` is free-form and echoed back.
+
+#### Response
+
+One Feature shown; the rest follow the same shape.
+
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [148.20, -37.55] },
+      "properties": {
+        "id": "88_145",
+        "fire_probability": [0.91],
+        "is_burning_predicted": [true],
+        "fire_threshold": 0.6183173060417175,
+        "risk_score": 0.91,
+        "risk_levels": [4],
+        "risk_labels": ["HIGH"],
+        "risk_factor": [1],
+        "forecast": [[0.91]],
+        "horizon": 1,
+        "n_output_channels": 1,
+        "grid_row": 88,
+        "grid_col": 145,
+        "model_id": "bushfire-forecaster-v1"
+      }
+    }
+  ]
+}
+```
+
+#### Errors
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Expected 8 input channels [...], but received observations with 7 columns.` | `is_burning` missing | Add channel 7 to every row |
+| `feature_names mismatch: [...] (order-sensitive).` | wrong names or order | Copy `input_channel_order` verbatim |
+| Low probabilities everywhere | all-zero `is_burning`, or weather pre-scaled | Check steps 4 and 5 |
+| Neighbouring cells ignored | `grid_row`/`grid_col` missing → 1×1 grid | Supply both on every Feature |
+| Cells misplaced, no error | row/col derived from `location_id` or another grid | Use the sidecar axes |
+
+---
 
 ### Bushfire Risk Classification (deprecated)
 

@@ -45,20 +45,20 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from typing import Literal
 
 DEFAULT_FEATURE_NAMES = [
-    "skin_temperature_c",
-    "soil_temperature_level_1_c",
-    "surface_solar_radiation_downwards",
-    "surface_thermal_radiation_downwards",
-    "temperature_2m_c",
-    "u_component_of_wind_10m",
-    "v_component_of_wind_10m",
+    "era5land_temperature_2m_c",
+    "era5_dewpoint_temperature_2m_c",
+    "era5_total_precipitation",
+    "era5_u_component_of_wind_10m",
+    "era5_v_component_of_wind_10m",
+    "era5land_surface_solar_radiation_downwards",
+    "era5land_skin_temperature_c"
 ]
 
 # Tensor dimensions the checkpoints were trained with. The adapters prefer the values
 # stored in the model bundle metadata; these are the fallbacks used when a checkpoint
 # ships without them.
 N_DEFAULT_FEATURES = len(DEFAULT_FEATURE_NAMES)
-DEFAULT_INPUT_STEPS = 60
+DEFAULT_INPUT_STEPS = 30
 DEFAULT_HORIZON = 1
 
 DEFAULT_FIRE_THRESHOLD = 0.5

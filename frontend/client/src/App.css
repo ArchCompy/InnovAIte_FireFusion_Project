@@ -5,6 +5,9 @@
 .dashboard-shell {
   display: flex;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .sidebar {
@@ -278,14 +281,18 @@
 }
 
 .main {
-  margin-left: 305px;
-  width: calc(100% - 305px);
-  transition: margin-left 0.2s ease, width 0.2s ease;
+  padding-left: 305px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  transition: padding-left 0.2s ease;
 }
 
 .main.sidebar-collapsed {
-  margin-left: 64px;
-  width: calc(100% - 64px);
+  padding-left: 64px;
+  width: 100%;
+  max-width: 100%;
 }
 
 .topbar {
@@ -703,7 +710,7 @@
   }
 
   .main {
-    margin-left: 0;
+    padding-left: 0;
     width: 100%;
   }
 
@@ -724,6 +731,9 @@
 }
 .ff-dashboard {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
   padding: 14px;
   background: var(--bg-dashboard);
   color: var(--text-main);
@@ -813,15 +823,16 @@
 }
 
 .ff-hero p {
-  margin: 7px 0 18px;
+  margin: 6px 0 0 0;
   color: #dbeafe;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
+  max-width: 650px;
 }
 
 .ff-summary-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(145px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -836,6 +847,7 @@
   background: rgba(4, 18, 45, 0.66);
   border: 1px solid rgba(148, 163, 184, 0.35);
   backdrop-filter: blur(8px);
+  min-width: 0;
 }
 
 .ff-summary-card span {
@@ -843,6 +855,9 @@
   font-size: 12px;
   color: #e5e7eb;
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ff-summary-card strong {
@@ -852,44 +867,51 @@
   line-height: 1;
 }
 
-.ff-summary-card .danger,
-.ff-summary-card .red {
+.ff-summary-card .ff-tone-danger,
+.ff-summary-card .ff-tone-red {
   color: #ff3048;
 }
 
-.ff-summary-card .purple {
+.ff-summary-card .ff-tone-purple {
   color: #a78bfa;
 }
 
-.ff-summary-card .green {
+.ff-summary-card .ff-tone-green {
   color: #22c55e;
 }
 
-.ff-summary-card .blue {
+.ff-summary-card .ff-tone-blue {
   color: #60a5fa;
 }
 
-.ff-top-grid {
+.ff-dashboard-layout {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1.15fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: 10px;
   margin-top: 10px;
 }
 
-.ff-middle-grid {
-  display: grid;
-  grid-template-columns: 1.05fr 1.45fr;
+.ff-column-left,
+.ff-column-right {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  margin-top: 10px;
+  min-width: 0;
+}
+
+@media (max-width: 1280px) {
+  .ff-dashboard-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .ff-panel {
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--bg-panel, rgba(255, 255, 255, 0.55));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--border-panel, rgba(255, 255, 255, 0.6));
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-panel, 0 8px 32px rgba(15, 23, 42, 0.08));
   padding: 14px;
 }
 
@@ -909,7 +931,7 @@
   gap: 8px;
   margin: 0;
   font-size: 16px;
-  color: #10213a;
+  color: var(--text-dashboard, #10213a);
 }
 
 .ff-panel-header a,
@@ -921,6 +943,59 @@
   cursor: pointer;
 }
 
+/* Filter tabs styles */
+.ff-filter-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.ff-filter-btn {
+  border: 1px solid var(--border-toggle);
+  background: var(--bg-toggle);
+  color: var(--text-toggle);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ff-filter-btn:hover {
+  background: var(--bg-toggle-hover);
+  color: var(--text-toggle-hover);
+}
+
+.ff-filter-btn.active {
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.ff-filter-btn-all.active {
+  background: #475569;
+  box-shadow: 0 4px 12px rgba(71, 85, 105, 0.35);
+}
+
+.ff-filter-btn-critical.active {
+  background: #ef233c;
+  box-shadow: 0 4px 12px rgba(239, 35, 60, 0.35);
+}
+
+.ff-filter-btn-warning.active {
+  background: #ff6b00;
+  box-shadow: 0 4px 12px rgba(255, 107, 0, 0.35);
+}
+
+.ff-filter-btn-advisory.active {
+  background: #0284c7;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+}
+
+/* Premium Card & Layout */
 .ff-update-list {
   display: grid;
   gap: 10px;
@@ -928,12 +1003,55 @@
 
 .ff-update-card {
   display: grid;
-  grid-template-columns: 56px 1fr;
-  gap: 12px;
-  padding: 10px;
-  border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid var(--border-panel);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+html[data-theme="dark"] .ff-update-card {
+  background: rgba(30, 41, 59, 0.25);
+}
+
+.ff-update-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.ff-update-card.critical {
+  border-left: 4px solid #ef233c;
+}
+
+.ff-update-card.critical:hover {
+  box-shadow: 0 8px 24px rgba(239, 35, 60, 0.15);
+}
+
+.ff-update-card.warning {
+  border-left: 4px solid #ff6b00;
+}
+
+.ff-update-card.warning:hover {
+  box-shadow: 0 8px 24px rgba(255, 107, 0, 0.15);
+}
+
+.ff-update-card.advisory {
+  border-left: 4px solid #0284c7;
+}
+
+.ff-update-card.advisory:hover {
+  box-shadow: 0 8px 24px rgba(2, 132, 199, 0.15);
+}
+
+/* Agency Container & Pulsing Dot */
+.ff-agency-container {
+  position: relative;
+  width: 52px;
+  height: 52px;
 }
 
 .ff-agency {
@@ -962,64 +1080,186 @@
   font-size: 11px;
 }
 
+.ff-pulse-dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  background-color: #ef233c;
+  border-radius: 50%;
+  border: 2px solid white;
+  animation: pulseGlow 1.5s infinite;
+}
+
+html[data-theme="dark"] .ff-pulse-dot {
+  border-color: #0f172a;
+}
+
+@keyframes pulseGlow {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 35, 60, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(239, 35, 60, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 35, 60, 0);
+  }
+}
+
+/* Update Body */
 .ff-update-body {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
 }
 
-.ff-update-body h4 {
+.ff-update-content-wrapper {
+  flex: 1;
+}
+
+.ff-update-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.ff-update-header h4 {
   margin: 0;
   font-size: 14px;
-  color: #0f172a;
-}
-
-.ff-update-body p {
-  margin: 3px 0;
-  color: #475569;
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.ff-update-body small {
-  color: #64748b;
+  color: var(--text-main);
   font-weight: 700;
+  line-height: 1.2;
 }
 
-.ff-update-body span {
-  display: block;
-  width: fit-content;
-  margin-left: auto;
-  padding: 5px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 900;
+.ff-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
   color: #ffffff;
 }
 
-.ff-update-card.critical span {
+.ff-badge-critical {
   background: #ef233c;
 }
 
-.ff-update-card.warning span {
-  background: #f97316;
+.ff-badge-warning {
+  background: #ff6b00;
 }
 
-.ff-update-card.advisory span {
-  color: #111827;
-  background: #facc15;
+.ff-badge-advisory {
+  background: #0284c7;
 }
 
-.ff-update-body button {
-  margin-top: 8px;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  border-radius: 6px;
-  padding: 6px 10px;
+.ff-update-content-wrapper p {
+  margin: 0 0 8px 0;
+  color: var(--text-toggle);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.ff-update-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-toggle);
+}
+
+.ff-time {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+/* Expanded Instructions */
+.ff-expanded-info {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-toggle);
+  animation: slideDown 0.25s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ff-instructions {
+  background: rgba(15, 23, 42, 0.03);
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-toggle);
+}
+
+html[data-theme="dark"] .ff-instructions {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.ff-instructions strong {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-main);
+  margin-bottom: 6px;
+}
+
+.ff-instructions ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.ff-instructions li {
   font-size: 12px;
-  font-weight: 800;
+  color: var(--text-main);
+  margin-bottom: 4px;
+  line-height: 1.35;
+}
+
+.ff-instructions li:last-child {
+  margin-bottom: 0;
+}
+
+/* Update Actions Button */
+.ff-update-actions {
+  align-self: flex-start;
+}
+
+.ff-details-btn {
+  border: 1px solid var(--border-toggle);
+  background: var(--bg-toggle);
+  color: var(--text-toggle);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.ff-details-btn:hover {
+  background: var(--bg-toggle-hover);
+  color: var(--text-toggle-hover);
+  border-color: var(--text-toggle);
 }
 
 .ff-risk-header {
@@ -1060,19 +1300,26 @@
 
 .ff-metric-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
 }
 
 .ff-metric-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 70px;
-  padding: 12px;
+  gap: 14px;
+  min-height: 74px;
+  padding: 12px 14px;
   border-radius: 10px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
+  min-width: 0;
+}
+
+html[data-theme="dark"] .ff-metric-card {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
 }
 
 .ff-metric-card svg {
@@ -1081,16 +1328,26 @@
 
 .ff-metric-card span {
   display: block;
-  color: #475569;
+  color: #64748b;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
+}
+
+html[data-theme="dark"] .ff-metric-card span {
+  color: #94a3b8;
 }
 
 .ff-metric-card strong {
   display: block;
   margin-top: 3px;
   color: #0f172a;
-  font-size: 15px;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+html[data-theme="dark"] .ff-metric-card strong {
+  color: #ffffff;
 }
 
 .ff-source-row {
@@ -1191,9 +1448,9 @@
   background: #ef233c;
 }
 
-.ff-map-panel,
-.ff-chart-panel,
-.ff-misinfo-panel {
+html[data-theme="dark"] .ff-map-panel,
+html[data-theme="dark"] .ff-chart-panel,
+html[data-theme="dark"] .ff-misinfo-panel {
   background: rgba(7, 29, 58, 0.65);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -1208,9 +1465,9 @@
   margin-bottom: 12px;
 }
 
-.ff-map-head h3,
-.ff-chart-panel h3,
-.ff-misinfo-panel h3 {
+html[data-theme="dark"] .ff-map-head h3,
+html[data-theme="dark"] .ff-chart-panel h3,
+html[data-theme="dark"] .ff-misinfo-panel h3 {
   color: #ffffff;
 }
 
@@ -1221,6 +1478,11 @@
   border-radius: 8px;
   width: 34px;
   height: 34px;
+  color: var(--text-dashboard, #10213a);
+  background: var(--bg-toggle-hover, rgba(0, 0, 0, 0.06));
+}
+
+html[data-theme="dark"] .ff-map-head button {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.12);
 }
@@ -1376,6 +1638,27 @@
     );
 }
 
+@keyframes ffDrawLine {
+  from {
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.ff-trend-line-animated {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: ffDrawLine 2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.ff-sparkline-animated {
+  stroke-dasharray: 300;
+  stroke-dashoffset: 300;
+  animation: ffDrawLine 1.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
 .ff-x-labels {
   grid-column: 2;
   display: flex;
@@ -1401,6 +1684,12 @@
   border: 1px solid #fed7aa;
 }
 
+.ff-decision-card > div {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
 .ff-decision-card svg {
   flex: 0 0 auto;
 }
@@ -1421,13 +1710,17 @@
   width: 100%;
   border: 0;
   border-radius: 7px;
-  padding: 9px;
+  padding: 8px 6px;
   color: #ffffff;
-  font-weight: 900;
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
   cursor: pointer;
   display: flex;
+  align-items: center;
   justify-content: center;
   gap: 6px;
+  margin-top: auto;
 }
 
 .ff-decision-card.red {
@@ -1458,6 +1751,61 @@
 
 .ff-decision-card.purple button {
   background: #6d5dfc;
+}
+
+/* Dark theme card overrides */
+html[data-theme="dark"] .ban-card {
+  background: rgba(15, 23, 42, 0.65);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 87, 34, 0.35);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+html[data-theme="dark"] .ban-card h3 {
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .ban-card p,
+html[data-theme="dark"] .ban-card small {
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .info-box {
+  background: rgba(15, 23, 42, 0.7);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .ff-decision-card {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .ff-decision-card h4 {
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .ff-decision-card p {
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .ff-decision-card.red {
+  background: rgba(239, 35, 60, 0.15);
+  border-color: rgba(239, 35, 60, 0.35);
+  color: #ff4d6d;
+}
+
+html[data-theme="dark"] .ff-decision-card.orange {
+  background: rgba(249, 115, 22, 0.15);
+  border-color: rgba(249, 115, 22, 0.35);
+  color: #fb923c;
+}
+
+html[data-theme="dark"] .ff-decision-card.purple {
+  background: rgba(109, 93, 252, 0.15);
+  border-color: rgba(109, 93, 252, 0.35);
+  color: #a78bfa;
 }
 
 .ff-advice-panel {
@@ -1520,21 +1868,27 @@
 
 .ff-misinfo-content {
   display: grid;
-  grid-template-columns: 160px 1fr 1.15fr;
-  gap: 18px;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 16px;
   align-items: center;
 }
 
 .ff-donut {
-  width: 135px;
-  height: 135px;
+  width: 125px;
+  height: 125px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   background:
-    radial-gradient(circle at center, #071d3a 0 38%, transparent 39%),
+    radial-gradient(circle at center, var(--bg-topbar, #ffffff) 0 38%, transparent 39%),
     conic-gradient(#3b82f6 0 38%, #22c55e 38% 66%, #f97316 66% 84%, #ef4444 84% 94%, #94a3b8 94% 100%);
   margin: auto;
+}
+
+html[data-theme="dark"] .ff-donut {
+  background:
+    radial-gradient(circle at center, #071d3a 0 38%, transparent 39%),
+    conic-gradient(#3b82f6 0 38%, #22c55e 38% 66%, #f97316 66% 84%, #ef4444 84% 94%, #94a3b8 94% 100%);
 }
 
 .ff-donut span {
@@ -1555,32 +1909,56 @@
 .ff-platform-row {
   display: grid;
   grid-template-columns: 1fr 50px 40px;
-  color: #e2e8f0;
+  color: var(--text-dashboard, #334155);
   font-size: 12px;
   font-weight: 800;
 }
 
+html[data-theme="dark"] .ff-platform-row {
+  color: #e2e8f0;
+}
+
 .ff-theme-box {
+  grid-column: 1 / -1;
   padding: 12px;
   border-radius: 10px;
+  background: rgba(0, 0, 0, 0.04);
+  margin-top: 4px;
+}
+
+html[data-theme="dark"] .ff-theme-box {
   background: rgba(255, 255, 255, 0.08);
 }
 
 .ff-theme-box h4 {
   margin: 0 0 10px;
-  color: #ffffff;
+  color: var(--text-dashboard, #1e293b);
   font-size: 13px;
+}
+
+html[data-theme="dark"] .ff-theme-box h4 {
+  color: #ffffff;
 }
 
 .ff-theme-row {
   display: grid;
-  grid-template-columns: 1fr 95px 40px;
+  grid-template-columns: 1fr 110px 42px;
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
-  color: #e2e8f0;
+  color: var(--text-dashboard, #334155);
   font-size: 12px;
   font-weight: 800;
+}
+
+html[data-theme="dark"] .ff-theme-row {
+  color: #e2e8f0;
+}
+
+.ff-theme-row span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ff-theme-row div {
@@ -1654,3 +2032,1027 @@
     font-size: 10px;
   }
 }
+
+/* ==========================================================
+   FIRE FUSION EMERGENCY INTELLIGENCE COMMAND UPGRADES
+   ========================================================== */
+
+/* 1. Live Broadcast Alert Banner */
+.ff-live-broadcast-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 18px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #991b1b, #ef233c);
+  color: #ffffff;
+  box-shadow: 0 0 20px rgba(239, 35, 60, 0.45);
+  animation: bannerPulse 2s infinite ease-in-out;
+}
+
+@keyframes bannerPulse {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(239, 35, 60, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(239, 35, 60, 0.85);
+  }
+}
+
+.ff-broadcast-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.ff-beacon-ping {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffffff;
+  animation: pulseGlow 1.2s infinite;
+}
+
+.ff-broadcast-dismiss {
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(0, 0, 0, 0.25);
+  color: #ffffff;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  white-space: nowrap;
+}
+
+.ff-broadcast-dismiss:hover {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+/* 2. Hero Header & Quick Command Actions */
+.ff-hero-header-flex {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.ff-hero-title-area {
+  flex: 1;
+  min-width: 280px;
+}
+
+.ff-system-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(239, 35, 60, 0.2);
+  border: 1px solid rgba(239, 35, 60, 0.4);
+  color: #fca5a5;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  margin-bottom: 8px;
+  backdrop-filter: blur(4px);
+}
+
+.ff-live-radar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef233c;
+  animation: pulseGlow 1.2s infinite;
+}
+
+.ff-hero-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  background: rgba(6, 18, 40, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  flex-shrink: 0;
+}
+
+.ff-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ff-siren-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f1f5f9;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.ff-siren-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.ff-siren-btn.active {
+  background: #ef233c;
+  border-color: #f87171;
+  box-shadow: 0 0 16px rgba(239, 35, 60, 0.6);
+  animation: pulseGlow 1.2s infinite;
+}
+
+.ff-spin-slow {
+  animation: spinSlow 3s linear infinite;
+}
+
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.ff-sim-btn {
+  background: linear-gradient(135deg, #ff5722, #ea580c);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(234, 88, 12, 0.4);
+}
+
+.ff-sim-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(234, 88, 12, 0.6);
+}
+
+.ff-sim-btn.simulating {
+  background: #dc2626;
+  animation: pulseGlow 1s infinite;
+}
+
+/* 3. Pulsing Summary Card Tone */
+.ff-summary-pulse {
+  border-color: rgba(239, 35, 60, 0.65) !important;
+  box-shadow: 0 0 20px rgba(239, 35, 60, 0.25);
+  animation: summaryCardGlow 2.5s infinite ease-in-out;
+}
+
+@keyframes summaryCardGlow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(239, 35, 60, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(239, 35, 60, 0.45);
+  }
+}
+
+.ff-summary-icon-wrap {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* 4. Enhanced Interactive Map */
+.ff-map-enhanced {
+  position: relative;
+  overflow: hidden;
+}
+
+.ff-map-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ff-map-flame-icon {
+  color: #f97316;
+  filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.6));
+}
+
+.ff-map-head-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ff-map-live-tag {
+  font-size: 10px;
+  font-weight: 800;
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  padding: 3px 8px;
+  border-radius: 12px;
+  letter-spacing: 0.5px;
+}
+
+.ff-map-interactive-box {
+  position: relative;
+  min-height: 280px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
+}
+
+/* Radar Sweep Effect across map */
+.ff-radar-sweep {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0) 0%, rgba(34, 197, 94, 0.08) 50%, rgba(34, 197, 94, 0.25) 100%);
+  pointer-events: none;
+  z-index: 2;
+  animation: radarScan 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes radarScan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+/* Active & Beacons for zones */
+.zone {
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.zone:hover {
+  transform: scale(1.08);
+  filter: brightness(1.2);
+  z-index: 10;
+}
+
+.zone-active {
+  box-shadow: 0 0 0 3px #ffffff, 0 0 25px rgba(255, 255, 255, 0.8) !important;
+  transform: scale(1.1);
+  z-index: 10;
+}
+
+.zone-pulse-beacon {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffedd5;
+  box-shadow: 0 0 8px #f97316;
+  animation: beaconPulse 1.5s infinite;
+}
+
+.zone-pulse-beacon.critical-beacon {
+  background: #fee2e2;
+  box-shadow: 0 0 10px #ef4444;
+  animation: beaconPulse 0.9s infinite;
+}
+
+@keyframes beaconPulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+}
+
+/* Map Telemetry Inspector Card */
+.ff-map-telemetry-card {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 5;
+  background: rgba(6, 24, 50, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 10px 14px;
+  width: 210px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  animation: slideUpFade 0.3s ease-out;
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ff-telemetry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ff-telemetry-header strong {
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.ff-telemetry-badge {
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 6px;
+  text-transform: uppercase;
+}
+
+.ff-telemetry-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.ff-telemetry-details span {
+  color: #64748b;
+}
+
+.ff-telemetry-details b {
+  color: #f1f5f9;
+}
+
+.ff-telemetry-details .full-width {
+  grid-column: 1 / -1;
+  margin-top: 3px;
+  line-height: 1.3;
+}
+
+.ff-telemetry-details small {
+  color: #fca5a5;
+  font-weight: 600;
+}
+
+/* 5. Wind Compass / Radar Gauge */
+.ff-wind-gauge-card {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.75), rgba(30, 41, 59, 0.55)) !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+  box-shadow: 0 4px 15px rgba(56, 189, 248, 0.12);
+}
+
+.ff-wind-gauge-card span {
+  color: #94a3b8 !important;
+}
+
+.ff-wind-gauge-card strong {
+  color: #ffffff !important;
+}
+
+.ff-wind-compass-circle {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid #38bdf8;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.2) 0%, rgba(15, 23, 42, 0.95) 75%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+}
+
+.ff-compass-arrow {
+  position: absolute;
+  width: 3px;
+  height: 32px;
+  background: linear-gradient(to top, #ef4444 48%, #38bdf8 52%);
+  border-radius: 2px;
+  transform: rotate(-45deg);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.9);
+  animation: compassSway 4s ease-in-out infinite alternate;
+  z-index: 1;
+}
+
+.ff-compass-center-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffffff;
+  z-index: 2;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+}
+
+@keyframes compassSway {
+  0% {
+    transform: rotate(-48deg);
+  }
+  50% {
+    transform: rotate(-42deg);
+  }
+  100% {
+    transform: rotate(-50deg);
+  }
+}
+
+.ff-compass-deg {
+  position: absolute;
+  font-size: 8px;
+  font-weight: 900;
+  color: #38bdf8;
+  top: 3px;
+  letter-spacing: 0.5px;
+  z-index: 2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.ff-metric-sub {
+  display: block;
+  font-size: 11px;
+  color: #38bdf8 !important;
+  font-weight: 600;
+  margin-top: 3px;
+}
+
+.ff-metric-icon-box {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ff-metric-card-red .ff-metric-icon-box {
+  background: rgba(239, 35, 60, 0.15);
+  color: #ef233c;
+}
+
+.ff-metric-card-orange .ff-metric-icon-box {
+  background: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+}
+
+.ff-metric-card-alert .ff-metric-icon-box {
+  background: rgba(220, 38, 38, 0.2);
+  color: #dc2626;
+  animation: pulseGlow 1.5s infinite;
+}
+
+/* 6. Chart Enhancements */
+.ff-chart-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ff-chart-svg-container {
+  position: relative;
+  width: 100%;
+}
+
+.ff-pulse-circle {
+  animation: beaconPulse 1.2s infinite;
+}
+
+/* 7. Incident Panel Extreme Glow */
+.ff-extreme-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  background: #ef233c;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 16px rgba(239, 35, 60, 0.5);
+  animation: bannerPulse 2s infinite ease-in-out;
+}
+
+.ff-dot-glow {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.ff-risk-label-group small {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+/* 8. Live Sync, Export & Search Additions */
+.ff-refresh-btn {
+  background: rgba(30, 41, 59, 0.7);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.ff-refresh-btn:hover {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: #38bdf8;
+}
+
+.ff-refresh-btn.refreshing {
+  background: rgba(56, 189, 248, 0.25);
+  color: #ffffff;
+}
+
+.ff-print-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ff-print-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.ff-filter-row-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.ff-update-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 200px;
+  flex: 1;
+  max-width: 280px;
+}
+
+.ff-search-icon {
+  position: absolute;
+  left: 10px;
+  color: #64748b;
+  pointer-events: none;
+}
+
+.ff-update-search-input {
+  width: 100%;
+  padding: 6px 28px 6px 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(15, 23, 42, 0.4);
+  color: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.ff-update-search-input:focus {
+  border-color: #ef233c;
+  background: rgba(15, 23, 42, 0.6);
+  box-shadow: 0 0 0 2px rgba(239, 35, 60, 0.2);
+}
+
+.ff-search-clear-btn {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ff-no-updates-notice {
+  padding: 24px;
+  text-align: center;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+}
+
+.ff-no-updates-notice button {
+  margin-top: 8px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: rgba(239, 35, 60, 0.2);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 35, 60, 0.35);
+  cursor: pointer;
+}
+
+.ff-summary-card.clickable:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.3);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.ff-panel-header a {
+  transition: color 0.2s ease;
+}
+
+.ff-panel-header a:hover {
+  color: #ef233c;
+}
+
+/* 9. Print & PDF Export Styling */
+.ff-print-header {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 14mm 12mm 14mm;
+  }
+
+  /* Hide interactive/web-only chrome and navigation */
+  .sidebar,
+  .topbar,
+  .footer,
+  .dashboard-shell > aside,
+  .dashboard-shell > header,
+  .dashboard-shell > footer,
+  .topbar-sidebar-toggle,
+  .ff-sidebar,
+  .ff-topbar,
+  .ff-hero-actions,
+  .ff-filter-row-wrap,
+  .ff-map-btn,
+  .ff-broadcast-dismiss,
+  .ff-radar-sweep,
+  .ff-fire-particles,
+  .ff-hero-overlay,
+  .ff-details-btn,
+  .ff-map-head-controls button,
+  .ff-panel-header a {
+    display: none !important;
+  }
+
+  /* Force browsers to print exact colors, gradients and backgrounds */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Reset body and container */
+  html, body {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+    font-size: 10.5pt !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+    overflow: visible !important;
+  }
+
+  .dashboard-shell,
+  .main,
+  .ff-layout,
+  .ff-dashboard {
+    background: #f8fafc !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Printable Official Letterhead */
+  .ff-print-header {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(135deg, #0b1e36 0%, #1e3a8a 100%) !important;
+    color: #ffffff !important;
+    padding: 16px 20px !important;
+    border-radius: 10px !important;
+    margin-bottom: 16px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+  }
+
+  .ff-print-brand h2 {
+    margin: 0;
+    font-size: 13pt;
+    font-weight: 900;
+    color: #ffffff !important;
+    letter-spacing: 0.6px;
+  }
+
+  .ff-print-brand p {
+    margin: 4px 0 0 0;
+    font-size: 9pt;
+    color: #cbd5e1 !important;
+    font-weight: 600;
+  }
+
+  .ff-print-meta {
+    text-align: right;
+    font-size: 8pt;
+    color: #e2e8f0 !important;
+    line-height: 1.5;
+  }
+
+  .ff-print-meta strong {
+    color: #ffffff !important;
+  }
+
+  /* Hero Section for PDF: Colorful executive banner */
+  .ff-hero {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+    border: 1px solid #334155 !important;
+    color: #ffffff !important;
+    box-shadow: none !important;
+    margin-bottom: 14px !important;
+    min-height: auto !important;
+    animation: none !important;
+    border-radius: 10px !important;
+  }
+
+  .ff-hero-content {
+    padding: 16px 20px !important;
+  }
+
+  .ff-hero h1 {
+    color: #ffffff !important;
+    font-size: 16pt !important;
+    margin-bottom: 4px !important;
+    font-weight: 800 !important;
+  }
+
+  .ff-hero p {
+    color: #94a3b8 !important;
+    font-size: 9pt !important;
+  }
+
+  .ff-system-badge {
+    background: rgba(239, 35, 60, 0.25) !important;
+    border: 1px solid #ef233c !important;
+    color: #fca5a5 !important;
+    font-size: 7.5pt !important;
+    padding: 2px 8px !important;
+    display: inline-block !important;
+  }
+
+  /* Summary Grid in PDF: Colorful Cards */
+  .ff-summary-grid {
+    grid-template-columns: repeat(5, 1fr) !important;
+    gap: 8px !important;
+    margin-top: 12px !important;
+  }
+
+  .ff-summary-card {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.04) !important;
+    padding: 8px 10px !important;
+    min-height: auto !important;
+    border-radius: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  .ff-summary-icon-wrap {
+    display: grid !important;
+    place-items: center !important;
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 6px !important;
+    background: #f1f5f9 !important;
+    flex-shrink: 0 !important;
+  }
+
+  .ff-summary-icon-wrap svg {
+    width: 15px !important;
+    height: 15px !important;
+  }
+
+  .ff-summary-card span {
+    color: #475569 !important;
+    font-size: 7pt !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    white-space: normal !important;
+    line-height: 1.2 !important;
+    display: block !important;
+  }
+
+  .ff-summary-card strong {
+    font-size: 11pt !important;
+    font-weight: 900 !important;
+    display: block !important;
+    margin-top: 2px !important;
+  }
+
+  .ff-summary-card .ff-tone-danger,
+  .ff-summary-card .ff-tone-red {
+    color: #ef233c !important;
+  }
+
+  .ff-summary-card .ff-tone-purple {
+    color: #8b5cf6 !important;
+  }
+
+  .ff-summary-card .ff-tone-green {
+    color: #10b981 !important;
+  }
+
+  .ff-summary-card .ff-tone-blue {
+    color: #0284c7 !important;
+  }
+
+  /* 2-Column Dashboard Layout in Print */
+  .ff-dashboard-layout {
+    display: grid !important;
+    grid-template-columns: 1.15fr 1fr !important;
+    gap: 12px !important;
+    page-break-inside: avoid;
+  }
+
+  .ff-panel {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03) !important;
+    border-radius: 10px !important;
+    padding: 12px !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .ff-panel-header h3,
+  .ff-map-head h3,
+  .ff-panel-title-row h3 {
+    color: #0f172a !important;
+    font-size: 10.5pt !important;
+    font-weight: 800 !important;
+  }
+
+  /* Official Updates in PDF */
+  .ff-update-card {
+    border: 1px solid #e2e8f0 !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    margin-bottom: 8px !important;
+    border-left: 4px solid #0284c7 !important;
+    border-radius: 6px !important;
+    page-break-inside: avoid;
+  }
+
+  .ff-update-card.critical {
+    border-left-color: #ef233c !important;
+  }
+
+  .ff-update-card.warning {
+    border-left-color: #f97316 !important;
+  }
+
+  .ff-update-card h4 {
+    color: #0f172a !important;
+    font-size: 9.5pt !important;
+    font-weight: 700 !important;
+  }
+
+  .ff-update-card p {
+    color: #475569 !important;
+    font-size: 8pt !important;
+  }
+
+  .ff-badge {
+    color: #ffffff !important;
+    font-weight: 800 !important;
+  }
+
+  .ff-badge-critical {
+    background: #ef233c !important;
+  }
+
+  .ff-badge-warning {
+    background: #f97316 !important;
+  }
+
+  .ff-badge-advisory {
+    background: #0284c7 !important;
+  }
+
+  .ff-agency {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-weight: 800 !important;
+  }
+
+  /* Incident Metrics in PDF */
+  .ff-extreme-badge {
+    color: #ffffff !important;
+    font-weight: 900 !important;
+  }
+
+  .ff-metric-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .ff-metric-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+    padding: 8px 10px !important;
+    min-height: auto !important;
+    border-radius: 6px !important;
+  }
+
+  .ff-metric-card span {
+    color: #64748b !important;
+    font-size: 7.5pt !important;
+  }
+
+  .ff-metric-card strong {
+    color: #0f172a !important;
+    font-size: 10.5pt !important;
+  }
+
+  .ff-wind-compass-circle {
+    border-color: #0284c7 !important;
+    background: #e0f2fe !important;
+  }
+
+  /* Resource Rows */
+  .ff-resource-row {
+    border-bottom: 1px solid #f8fafc;
+    padding: 6px 0;
+  }
+
+  .ff-resource-info span {
+    color: #0f172a !important;
+    font-size: 8.5pt !important;
+  }
+
+  .ff-resource-bar {
+    background: #e2e8f0 !important;
+  }
+
+  .ff-resource-bar i.critical {
+    background: #ef233c !important;
+  }
+
+  .ff-resource-bar i.warning {
+    background: #f97316 !important;
+  }
+
+  .ff-resource-bar i.safe {
+    background: #10b981 !important;
+  }
+
+  /* Map and Legend in PDF */
+  .ff-map-area {
+    background: #0b1a30 !important;
+    border-radius: 8px !important;
+  }
+
+  /* SVG Trend Chart print fidelity */
+  .ff-trend-chart {
+    border-top: 1px solid #f1f5f9;
+    padding-top: 8px;
+  }
+
+  .ff-y-labels span,
+  .ff-x-labels span {
+    color: #64748b !important;
+    font-size: 7pt !important;
+  }
+}

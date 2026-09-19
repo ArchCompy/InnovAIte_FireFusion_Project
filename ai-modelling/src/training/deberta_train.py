@@ -92,6 +92,18 @@ def main() -> None:
     ap.add_argument("--min-delta", type=float, default=1e-4)
     ap.add_argument("--num-workers", type=int, default=0)
     ap.add_argument("--gradient-checkpointing", action="store_true")
+    # LoRA: parameter-efficient fine-tuning. When --lora is set we freeze the base
+    # DeBERTa and train only low-rank adapters (+ the classifier head).
+    ap.add_argument("--lora", action="store_true", help="Use LoRA instead of full fine-tuning.")
+    ap.add_argument("--lora-r", type=int, default=16)
+    ap.add_argument("--lora-alpha", type=int, default=32)
+    ap.add_argument("--lora-dropout", type=float, default=0.05)
+    ap.add_argument(
+        "--lora-save-adapter",
+        action="store_true",
+        help="Save only the LoRA adapter (small). Default merges it into the base "
+        "so the checkpoint loads like any full DeBERTa checkpoint.",
+    )
     args = ap.parse_args()
 
     set_seed(args.seed)
@@ -109,6 +121,20 @@ def main() -> None:
         )
 
     tokenizer, model = build_fresh_classifier(args.hf_model_id)
+    if args.lora:
+        # deberta-v3 (v2 arch) attention exposes separate query/key/value_proj Linears.
+        from peft import LoraConfig, TaskType, get_peft_model
+
+        lora_cfg = LoraConfig(
+            task_type=TaskType.SEQ_CLS,  # keeps the classifier head trainable
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
+            target_modules=["query_proj", "key_proj", "value_proj"],
+            bias="none",
+        )
+        model = get_peft_model(model, lora_cfg)
+        model.print_trainable_parameters()
     model.to(device)
     if args.gradient_checkpointing:
         model.gradient_checkpointing_enable()
@@ -197,6 +223,10 @@ def main() -> None:
         model.load_state_dict(best_state)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    if args.lora and not args.lora_save_adapter:
+        # Fold adapters into the base weights so the checkpoint loads like a normal
+        # full DeBERTa checkpoint (no PEFT needed at inference time).
+        model = model.merge_and_unload()
     model.save_pretrained(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
     meta = {
