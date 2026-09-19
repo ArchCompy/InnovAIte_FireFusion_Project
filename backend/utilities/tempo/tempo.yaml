@@ -1,0 +1,31 @@
+# Local Tempo config for docker compose development/demo use.
+# Mirrors infrastructure/observability/tempo/configmap.yaml (the deployed
+# platform's equivalent) in spirit: single-binary mode, local filesystem
+# storage, OTLP receiver. Not intended for anything beyond local use.
+
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  trace_idle_period: 10s
+
+compactor:
+  compaction:
+    block_retention: 24h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal

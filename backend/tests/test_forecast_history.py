@@ -48,6 +48,10 @@ def forecast_module(monkeypatch):
     """Import the real forecast_service module, with its cache client mocked."""
     if str(APP_DIR) not in sys.path:
         sys.path.insert(0, str(APP_DIR))
+    # forecast_service imports shared.tracing; backend/ (APP_DIR's parent)
+    # is where that top-level shared/ package lives.
+    if str(APP_DIR.parent) not in sys.path:
+        sys.path.insert(0, str(APP_DIR.parent))
     monkeypatch.setenv("CACHE_URL", "redis://localhost:6379")
     # config.config.Environment requires these even though history logic
     # never touches the broker, matching the other unit test fixtures.

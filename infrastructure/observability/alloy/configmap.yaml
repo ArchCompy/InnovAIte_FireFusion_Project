@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alloy-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alloy
+    app.kubernetes.io/part-of: firefusion-platform
+data:
+  config.alloy: |
+    discovery.kubernetes "firefusion_pods" {
+      role = "pod"
+
+      namespaces {
+        names = ["firefusion"]
+      }
+    }
+
+    discovery.relabel "firefusion_pods" {
+      targets = discovery.kubernetes.firefusion_pods.targets
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+        regex = "firefusion-api|model-api|aggregator-api"
+        action = "keep"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label = "namespace"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label = "pod"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label = "container"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+        target_label = "service"
+      }
+
+      rule {
+        target_label = "cluster"
+        replacement = "firefusion"
+      }
+    }
+
+    loki.source.kubernetes "firefusion_pods" {
+      targets = discovery.relabel.firefusion_pods.output
+      forward_to = [loki.process.firefusion.receiver]
+    }
+
+    loki.process "firefusion" {
+      stage.static_labels {
+        values = {
+          platform = "firefusion",
+        }
+      }
+
+      forward_to = [loki.write.default.receiver]
+    }
+
+    loki.write "default" {
+      endpoint {
+        url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+      }
+    }

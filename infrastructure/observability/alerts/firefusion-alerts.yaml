@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-firefusion-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: alert-rules
+    app.kubernetes.io/part-of: firefusion-platform
+data:
+  firefusion-alerts.yaml: |
+    groups:
+      - name: firefusion-backend
+        rules:
+          - alert: FireFusionBackendServiceUnavailable
+            expr: up{job="firefusion-backend"} == 0
+            for: 2m
+            labels:
+              severity: critical
+              platform: firefusion
+            annotations:
+              summary: "FireFusion backend service is unavailable"
+              description: "Prometheus has been unable to scrape {{ $labels.service }} for more than 2 minutes."
+
+          - alert: FireFusionNoBackendTargets
+            expr: absent(up{job="firefusion-backend"})
+            for: 2m
+            labels:
+              severity: critical
+              platform: firefusion
+            annotations:
+              summary: "No FireFusion backend targets discovered"
+              description: "Prometheus cannot discover any FireFusion backend scrape targets."
+
+          - alert: FireFusionHighHTTP5xxRate
+            expr: |
+              (
+                sum by (service) (
+                  rate(http_requests_total{
+                    job="firefusion-backend",
+                    status="5xx"
+                  }[5m])
+                )
+                /
+                clamp_min(
+                  sum by (service) (
+                    rate(http_requests_total{
+                      job="firefusion-backend"
+                    }[5m])
+                  ),
+                  0.001
+                )
+              ) > 0.05
+            for: 5m
+            labels:
+              severity: warning
+              platform: firefusion
+            annotations:
+              summary: "High HTTP 5xx error rate"
+              description: "{{ $labels.service }} has exceeded a 5% HTTP 5xx error rate for 5 minutes."
+
+          - alert: FireFusionHighRequestLatency
+            expr: |
+              histogram_quantile(
+                0.95,
+                sum by (le, service) (
+                  rate(http_request_duration_seconds_bucket{
+                    job="firefusion-backend"
+                  }[5m])
+                )
+              ) > 1
+            for: 5m
+            labels:
+              severity: warning
+              platform: firefusion
+            annotations:
+              summary: "High backend request latency"
+              description: "95th percentile request latency for {{ $labels.service }} has exceeded 1 second for 5 minutes."

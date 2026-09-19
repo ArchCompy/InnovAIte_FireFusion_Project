@@ -9,3 +9,11 @@ fastapi>=0.115
 pydantic-settings>=2.0
 aio_pika>=9.0
 psycopg[binary,pool]>=3.1
+
+# test_tracing.py imports the real shared/tracing.py, and forecast_service.py
+# now imports it too, so these must be present or those tests silently skip.
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-logging

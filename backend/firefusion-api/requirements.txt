@@ -8,3 +8,13 @@ psycopg[binary,pool]
 # HTTP client used by firefusion-api to communicate with
 # aggregator-api and the AI Modelling FastAPI service.
 httpx
+
+# Distributed tracing. Off by default (OTEL_TRACES_ENABLED); see
+# docs/distributed-tracing.md and shared/tracing.py.
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-logging
+opentelemetry-instrumentation-psycopg
+opentelemetry-instrumentation-redis
