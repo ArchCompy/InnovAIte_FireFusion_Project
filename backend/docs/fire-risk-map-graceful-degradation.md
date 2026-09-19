@@ -40,11 +40,13 @@ timestamp key is missing, unreadable, or absent — it is always reported
 forecast: there is no last-known-good response to serve, so it is not
 degraded — it raises, and the router turns it into a `503` as before.
 
-This also applies to the existing defensive handling in `fetch_predictions()`
-(a cached value that isn't valid JSON, isn't an object, or doesn't match the
-GeoJSON schema): these degrade to `unavailable` with an empty
-`FeatureCollection`, the same as no forecast ever having been received, not
-an unhandled error.
+A cached value that is present but unusable (not valid JSON, not an object,
+or not matching the GeoJSON schema) is **not** degraded to `unavailable`. That
+would show a blank map as if there were simply nothing to report, when in fact
+the stored forecast is damaged. `fetch_predictions()` raises
+`ForecastCacheCorruptionError` and the router returns `503`, the same as a
+cache outage. Only a genuinely *missing* key means "no forecast yet", and
+that is the one case that returns `unavailable`.
 
 ## Response shape
 

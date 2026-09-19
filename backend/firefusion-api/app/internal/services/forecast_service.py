@@ -2,6 +2,8 @@ import json
 import logging
 from datetime import datetime, timezone
 
+from pydantic import ValidationError
+
 from .caching_service import cache_client
 from .websocket_connection_manager import ws_manager
 from ...config.config import environment
@@ -12,6 +14,10 @@ from ..models.forecast_status import ForecastMeta, ForecastStatus
 logger = logging.getLogger(__name__)
 
 GENERATED_AT_KEY = "predictions:generated_at"
+
+
+class ForecastCacheCorruptionError(RuntimeError):
+    """Raised when Redis contains unusable cached forecast data."""
 
 
 def _empty():
@@ -168,14 +174,17 @@ class ForecastService:
     async def fetch_predictions(self):
         """Return the latest forecast as a GeoJSON FeatureCollection.
 
-        Per the Fire Risk Map API contract, this always returns a valid
-        FeatureCollection so map clients never receive a null or malformed body.
+        A missing Redis value represents the normal no-prediction state and
+        returns an empty FeatureCollection tagged unavailable. A present but
+        unusable value is reported as cache corruption so the API does not
+        disguise damaged prediction data as a normal no-data response.
+
         The last known good forecast keeps being served past its freshness
         window, tagged stale, rather than being dropped: during an incident a
         stale risk picture is more useful than a blank map. See
         docs/fire-risk-map-graceful-degradation.md.
 
-        Dependency failures propagate, and the router translates them to a 503.
+        Redis dependency failures propagate to the router unchanged.
         """
 
         data = await cache_client.get("predictions")
@@ -189,33 +198,25 @@ class ForecastService:
 
         try:
             payload = json.loads(data)
-        except (TypeError, ValueError):
-            logger.warning(
-                "Cached prediction was not valid JSON; "
-                "returning empty FeatureCollection"
-            )
-            return _with_meta(_empty(), _unavailable_meta())
+        except (TypeError, ValueError) as exc:
+            raise ForecastCacheCorruptionError(
+                "Cached prediction was not valid JSON"
+            ) from exc
 
-        # json.loads("null") returns None, and other JSON scalars decode
-        # to non-dict types. None of these can be a FeatureCollection.
         if not isinstance(payload, dict):
-            logger.warning(
-                "Cached prediction decoded to %s, not an object; "
-                "returning empty FeatureCollection",
-                type(payload).__name__,
+            raise ForecastCacheCorruptionError(
+                "Cached prediction decoded to "
+                f"{type(payload).__name__}, not an object"
             )
-            return _with_meta(_empty(), _unavailable_meta())
 
         try:
             feature_collection = FeatureCollection(**payload).model_dump(
                 exclude_none=True
             )
-        except Exception:
-            logger.warning(
-                "Cached prediction did not match the GeoJSON schema; "
-                "returning empty FeatureCollection"
-            )
-            return _with_meta(_empty(), _unavailable_meta())
+        except ValidationError as exc:
+            raise ForecastCacheCorruptionError(
+                "Cached prediction did not match the GeoJSON schema"
+            ) from exc
 
         generated_at_raw = await cache_client.get(GENERATED_AT_KEY)
         meta = _classify_freshness(generated_at_raw)
