@@ -4,9 +4,9 @@ These tests exercise the real firefusion-api over HTTP and use the running
 Redis service to establish explicit cache states. Each cache mutation is
 restored by the shared prediction_cache fixture.
 """
-import os
 
 import json
+import os
 
 import pytest
 
@@ -18,6 +18,9 @@ RISK_MAX = 5
 
 ENDPOINT = "/api/bushfire-forecast"
 CACHE_KEY = "predictions"
+
+# model-api sample data is behind the shared internal API key.
+API_KEY = os.getenv("API_KEY", "local-development-key")
 
 EMPTY_FEATURE_COLLECTION = {
     "type": "FeatureCollection",
@@ -67,9 +70,6 @@ SCHEMA_INVALID_PAYLOAD = {
         }
     ],
 }
-
-# model-api sample data is behind the shared internal API key.
-API_KEY = os.getenv("API_KEY", "local-development-key")
 
 
 def validate_feature(feature, index=0):
@@ -195,12 +195,6 @@ def test_valid_cached_prediction_is_served_over_http(
         validate_feature(feature, index)
 
 
-    The live forecast may legitimately be empty, so validate_feature() is also run
-    against model-api's sample GeoJSON, which always contains features. If the
-    validation rules themselves are broken, this fails even when the forecast is
-    empty.
-    """
-    body = http.get(f"{model}/model/geojson", headers={"X-API-Key": API_KEY}).json()
 @pytest.mark.parametrize(
     "cached_value",
     [
@@ -245,7 +239,7 @@ def test_feature_structure_runs_against_model_sample(
 ):
     """The running model-api sample supplies non-empty GeoJSON."""
 
-    response = http.get(f"{model}/model/geojson")
+    response = http.get(f"{model}/model/geojson", headers={"X-API-Key": API_KEY})
 
     assert response.status_code == 200
 
