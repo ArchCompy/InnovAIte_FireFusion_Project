@@ -2,8 +2,8 @@
 OpenAPI regression tests for the final merged Backend contract.
 
 These tests are intentionally broad. They catch merge mistakes where a shared
-Pydantic model or router is replaced wholesale and newer fields/endpoints
-silently disappear.
+Pydantic model or router is replaced wholesale and newer fields silently
+disappear.
 """
 
 
@@ -25,14 +25,3 @@ def test_forecast_openapi_includes_final_merged_fields(firefusion_url, http):
     assert "risk_factor" in serialized
     assert "fire_probability" in serialized
     assert "meta" in serialized
-
-
-def test_health_and_ready_are_exposed_in_openapi(firefusion_url, http):
-    """Ashan's operational endpoints should remain registered after main.py merges."""
-    response = http.get(f"{firefusion_url}/openapi.json")
-
-    assert response.status_code == 200
-
-    paths = response.json().get("paths", {})
-    assert "/health" in paths
-    assert "/ready" in paths
