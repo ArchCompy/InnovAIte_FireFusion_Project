@@ -1,0 +1,23 @@
+# Coverage for the SonarQube scan (see sonar-project.properties).
+#
+# relative_files plus source = . makes coverage.xml paths relative to the repo
+# root (backend/firefusion-api/app/...), which is how SonarQube looks files up.
+# Per-directory sources give paths relative to each source folder instead, so
+# the three different main.py files would be indistinguishable.
+#
+# Coverage can only discover unimported files inside importable packages, and
+# the hyphenated service folders are not, so files the unit tests never import
+# are absent from the report. Sonar counts them as 0% via
+# sonar.python.coverage.forceZeroCoverage rather than ignoring them.
+[run]
+relative_files = True
+source = .
+
+[report]
+include =
+    backend/firefusion-api/app/*
+    backend/aggregator-api/app/*
+    backend/model-api/app/*
+    backend/shared/*
+omit =
+    backend/model-api/src/*

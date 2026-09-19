@@ -1,0 +1,80 @@
+name: SonarQube
+
+# Static analysis and a quality gate for the Backend stream on every PR.
+# Setup and scope: backend/docs/sonarqube.md
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: sonarqube-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sonarqube:
+    name: SonarQube Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # A missing token must not turn every PR red. Until SONAR_TOKEN exists
+      # (and always for PRs from forks, which never receive secrets) the job
+      # passes with a notice instead of failing.
+      - name: Check SonarQube is configured
+        id: config
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=SonarQube skipped::SONAR_TOKEN is not available to this run (not configured yet, or a PR from a fork). See backend/docs/sonarqube.md."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        if: steps.config.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          # Full history: SonarQube needs it to attribute new code correctly.
+          fetch-depth: 0
+
+      - name: Set up Python
+        if: steps.config.outputs.enabled == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        if: steps.config.outputs.enabled == 'true'
+        run: pip install -r backend/tests/requirements-test.txt pytest-cov
+
+      # Same selection as the main CI unit-test step, plus coverage. Integration
+      # tests need the running stack, so they are not part of this scan.
+      - name: Run unit tests with coverage
+        if: steps.config.outputs.enabled == 'true'
+        run: pytest backend/tests -m "not integration" --cov --cov-config=.coveragerc --cov-report=xml
+
+      - name: SonarQube scan and quality gate
+        if: steps.config.outputs.enabled == 'true'
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          # Required for a self-hosted SonarQube Server; leave the variable
+          # unset for SonarQube Cloud.
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          # Fails this job when the quality gate fails, so it can be made a
+          # required check on the branch.
+          args: >
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY || 'InnovAIte-Deakin_InnovAIte_FireFusion_Project' }}
+            ${{ vars.SONAR_ORGANIZATION && format('-Dsonar.organization={0}', vars.SONAR_ORGANIZATION) || '' }}
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
