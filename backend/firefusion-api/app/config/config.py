@@ -41,5 +41,9 @@ class Environment(BaseSettings):
     db_pool_max_size: int = 10
     db_pool_timeout_seconds: float = 10.0
 
+    # How long forecast_history rows are kept before prune_expired_history()
+    # (run externally, see docs/forecast-history.md) deletes them.
+    forecast_history_retention_days: int = 30
+
 
 environment = Environment()  # type: ignore
